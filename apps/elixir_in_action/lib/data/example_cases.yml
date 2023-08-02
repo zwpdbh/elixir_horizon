@@ -1,0 +1,29 @@
+# Comments 
+servers:
+  - name: "aks-for-az-3e6ziw"
+    rg: "aks-for-az-3e6ziw"
+    region: "westus"
+    sub: "65490f91-f2c2-4514-80ba-4ec1de89aeda"
+  - name: "aks-for-az-an12dv"
+    rg: "aks-for-az-an12dv"
+    region: "westus"
+    sub: "65490f91-f2c2-4514-80ba-4ec1de89aeda"
+  - name: "aks-for-az-y5m780"
+    rg: "aks-for-az-y5m780"
+    region: "westus"
+    sub: "65490f91-f2c2-4514-80ba-4ec1de89aeda"
+  
+cases:
+  - description: "case01"
+    command: "kubectl get pods"
+  - 
+    - description: "case02-1"
+      command: "kubectl get pods"
+    - description: "case02-1"
+      command: "kubectl get pods"
+  - description: "case03"
+    command: "kubectl get pods"
+  - description: "case04"
+    command: "kubectl get pods"
+  - description: "test"
+    command: "kubectl get pods"

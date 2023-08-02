@@ -1,0 +1,1154 @@
+# why elixir
+
+## Introduction
+
+### What is Elixir?
+
+Elixir is a functional, concurrent, and scalable programming language that runs on the Erlang Virtual Machine (BEAM). It offers several advantages that make it a popular choice for building modern applications, particularly in the context of distributed systems and web development. Here are some of the key advantages of Elixir:
+
+* Scalability and Concurrency: Elixir is designed to handle concurrent and distributed systems with ease.
+* Fault Tolerance and Reliability: Elixir inherits the battle-tested reliability of the Erlang ecosystem.
+* Functional Programming Paradigm: Elixir is a functional programming language, which means it encourages immutability and pure functions.
+* Clear and Expressive Syntax
+* Extensibility and Interoperability: Elixir can easily interface with other languages, such as Erlang, C, and JavaScript.
+* Active Community: Elixir has an active and supportive community that contributes to the language's growth and development.
+
+<!-- livebook:{"break_markdown":true} -->
+
+### About message passing
+
+Message passing in Elixir is a powerful mechanism for building concurrent, fault-tolerant, and scalable systems. It allows you to build highly responsive and distributed applications, taking advantage of multiple cores and multiple machines to handle tasks concurrently.
+
+Alan Kay, the pioneer in object-oriented programming described message-passing, isolation and state encapsulation as foundation of object-oriented design and Joe Armstrong described Erlang as the only object-oriented language.
+
+<!-- livebook:{"break_markdown":true} -->
+
+### RoadMap
+
+Part one: Elixir language basics.
+
+Part two: Concurrency in Elixir.
+
+* Process Basics
+* Task
+* Supervisor
+* Registry
+* GenServer
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Basic language feature of Elixir
+
+### Immutable
+
+All variables in Elixir are really immutable.
+
+Don't think of "variables" in Elixir as variables in imperative languages which is "spaces for values". Rather look at them as "labels for values".
+
+```elixir
+# In Elixir you can rebind variables (change the meaning of the "label")
+# mainly for your convenience:
+# value "1" is now labelled "v"
+v = 1
+# label "v" is changed: now "2" is labelled "v"
+v = v + 1
+# value "20" is now labelled "v"
+v = v * 10
+
+# In Erlang, you can't do this. Instead, you must write this:
+# value "1" is now labelled "v1"
+v1 = 1
+# value "2" is now labelled "v2"
+v2 = v1 + 1
+# value "20" is now labelled "v3"
+v3 = v2 * 10
+```
+
+```elixir
+map = Map.new()
+```
+
+```elixir
+# add value to map
+Map.put(map, :a, "foo") |> IO.inspect()
+# the value of map is not changed
+map
+```
+
+```elixir
+# The only way to use updated map is to bind it with a label.
+updated_map = Map.put(map, :a, "foo") |> IO.inspect()
+```
+
+### Pattern Matching
+
+Actually `=` is not assignment, it is pattern matching.
+
+Pattern matching is a powerful part of Elixir. It allows us to match simple values, data structures, and even functions.
+
+```elixir
+x = 1
+```
+
+```elixir
+{x, y} = {"a", 10}
+IO.inspect(x)
+IO.inspect(y)
+```
+
+The match operator performs assignment when the left side of the match includes a variable. \
+In some cases this variable rebinding behavior is undesirable. For these situations we have the pin operator: `^`.
+
+```elixir
+# First, z matches the right side. 
+# So, z is bind to value 1.
+z = 1
+```
+
+```elixir
+# We want to test if the value under label z is match with 2
+^z = 2
+```
+
+```elixir
+# When we pin a variable we match on the existing value rather than rebinding to a new one.
+# Here, the z's existing value is 1. So it is matched.
+{z, ^z} = {2, 1}
+z
+```
+
+#### Pattern matching on data structure
+
+```elixir
+# match list
+[head | tail] = [1, 2, 3, 4]
+IO.inspect(head)
+tail
+```
+
+```elixir
+[x, y | z] = [1, 2, 3, 4, 5, 6]
+z
+```
+
+```elixir
+# match map 
+%{"some_key" => v} = %{"some_key" => :foo}
+v
+```
+
+```elixir
+{:ok, %{message: %{size: size}, payload: p}} =
+  {:ok, %{message: %{api_version: 10, size: 10, pro01: "pro01", pro02: "pro02"}, payload: 100}}
+
+size |> IO.inspect()
+p
+```
+
+#### Pattern matching on function
+
+```elixir
+defmodule Area do
+  def compute_area(args) do
+    area =
+      case args do
+        {:squre, x} -> x * x
+        {:rectangle, x, y} -> x * y
+        {:circle, r} -> 3.14 * r * r
+        arg -> IO.inspect(arg, label: "unknow shape")
+      end
+
+    area
+  end
+end
+```
+
+```elixir
+Area.compute_area({:rectangle, 10})
+```
+
+```elixir
+Area.compute_area({:rectangle, 10, 20}) |> IO.inspect()
+Area.compute_area({:squre, 100})
+```
+
+Functions pattern-match the data passed in to each of its arguments independently.
+
+```elixir
+defmodule AreaV2 do
+  def compute_area({:squre, x}), do: x * x
+  def compute_area({:rectangle, x, y}), do: x * y
+  def compute_area({:circle, r}), do: 3.14 * r * r
+end
+```
+
+```elixir
+AreaV2.compute_area({:circle, 10})
+```
+
+```elixir
+AreaV2.compute_area({:others, 10}) |> IO.inspect()
+```
+
+#### Use elixir to handle daily business is a joy.
+
+Suppose we have a csv file which records many stock records and we want to extract the largest profit one.
+
+```elixir
+stock_file = Path.join([File.cwd!(), "apps/elixir_in_action/lib/data/values.csv"])
+File.exists?(stock_file)
+```
+
+```elixir
+length(String.split(File.read!(stock_file), "\n", trim: true))
+```
+
+```elixir
+stock_file
+|> File.read!()
+|> String.split("\n", trim: true)
+|> length()
+```
+
+```elixir
+# What is data looks like
+stock_file
+|> File.stream!()
+|> Enum.take(20)
+```
+
+```elixir
+# Use CSV to decode the format 
+stock_file
+|> File.stream!()
+|> CSV.decode!(separator: ?,, headers: true)
+|> Enum.take(5)
+```
+
+```elixir
+defmodule Stock do
+  def compute_increase(csv_file) do
+    csv_file
+    |> File.stream!()
+    |> CSV.decode(separator: ?,, headers: true)
+    |> Stream.filter(&filter_valid_recod(&1))
+    |> Stream.map(&standarize_record/1)
+    |> Enum.reduce(%{}, &get_each_stock_range/2)
+    |> Stream.filter(&filter_range_value/1)
+    |> Stream.map(&compute_range_value/1)
+    |> Stream.filter(&filter_non_negative_value/1)
+    |> Enum.sort_by(fn %{increase_value: v} -> v end, :desc)
+    |> List.first()
+    |> print_result
+  end
+
+  defp filter_valid_recod(
+         {:ok,
+          %{
+            "Value" => value_str,
+            "Name" => _name,
+            "Date" => _data,
+            "notes" => _note,
+            "Change" => _change
+          }} = x
+       ) do
+    value_str
+    |> Float.parse()
+    |> case do
+      {_value, ""} -> x
+      _ -> nil
+    end
+  end
+
+  defp filter_valid_recod(_) do
+    nil
+  end
+
+  defp standarize_record(
+         {:ok,
+          %{
+            "Value" => value_str,
+            "Name" => name,
+            "Date" => date_str,
+            "notes" => notes,
+            "Change" => change
+          }}
+       ) do
+    {value, ""} = Float.parse(value_str)
+    date = convert_str_to_date(date_str)
+    %{value: value, name: name, date: date, change: change, notes: notes}
+  end
+
+  defp convert_str_to_date(str) do
+    str
+    |> String.split("-")
+    |> Enum.map(&String.to_integer/1)
+    |> (fn [year, month, day] -> Date.new!(year, month, day) end).()
+  end
+
+  defp get_each_stock_range(
+         %{value: value, name: name, date: date, change: _change, notes: _notes},
+         %{} = acc
+       ) do
+    case Map.fetch(acc, name) do
+      {:ok, current_range} ->
+        updated_range = update_range(current_range, %{value: value, date: date})
+        Map.put(acc, name, updated_range)
+
+      :error ->
+        Map.put_new(acc, name, {%{date: date, value: value}, %{date: date, value: value}})
+    end
+  end
+
+  # Given a existing range which is a tuple, and a new value, update the range
+  defp update_range(
+         {%{date: first_date} = first_one, %{date: last_date} = last_one},
+         %{date: date} = current_one
+       ) do
+    case {Date.compare(date, first_date), Date.compare(date, last_date)} do
+      {:lt, _} ->
+        {current_one, last_one}
+
+      {_, :gt} ->
+        {first_one, current_one}
+
+      _ ->
+        {first_one, last_one}
+    end
+  end
+
+  # a range for a stock is like:
+  # {"IQZ",
+  #  {%{date: ~D[2015-07-08], value: 656.36},
+  #   %{date: ~D[2015-10-08], value: 537.53}}}
+  defp filter_range_value({_stock_name, {%{date: start_date}, %{date: end_date}}} = x) do
+    case Date.compare(start_date, end_date) do
+      :lt -> x
+      _ -> nil
+    end
+  end
+
+  defp compute_range_value({stock_name, {%{value: start_value}, %{value: end_value}}}) do
+    %{
+      stock: stock_name,
+      increase_value: Decimal.sub(Decimal.from_float(end_value), Decimal.from_float(start_value))
+    }
+  end
+
+  defp filter_non_negative_value(%{increase_value: value} = x) do
+    case Decimal.compare(value, 0) do
+      :gt -> x
+      _ -> nil
+    end
+  end
+
+  defp print_result(result) do
+    case result do
+      nil ->
+        "nil"
+
+      %{stock: stock, increase_value: value} ->
+        "company: #{stock}, increase_value: #{value |> Decimal.round(6) |> Decimal.to_string()}"
+    end
+  end
+end
+```
+
+```elixir
+Stock.compute_increase(stock_file)
+```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Concurrency Part 1: Process Basics
+
+* Messages
+* Spawn
+* receive
+* getting spawn results
+* process dictionary
+
+<!-- livebook:{"break_markdown":true} -->
+
+What is a Erlang process?
+
+Erlang is designed for massive concurrency. Erlang processes are lightweight (grow and shrink dynamically) with small memory footprint, fast to create and terminate, and the scheduling overhead is low.
+
+```elixir
+# Every process has an ID, let's find the current process
+self()
+```
+
+```elixir
+# Let spawn a new process 
+pid01 =
+  spawn(fn ->
+    Process.sleep(5_000)
+    IO.puts("Hello")
+  end)
+```
+
+```elixir
+# Check if a process is alive
+# This shows one thing: the pid is still exist even the associated process is not longer exist.
+Process.alive?(pid01)
+```
+
+This is how we send and receive a message from a process.
+
+```elixir
+# send two messages to current process 
+send(self(), :foo)
+send(self(), :bar)
+```
+
+```elixir
+# Receive an message 
+receive do
+  message -> IO.inspect(message, label: "message")
+end
+```
+
+```elixir
+# Use pattern matching to receive message
+receive do
+  :bar -> "got bar"
+  _ -> "got not bar"
+end
+```
+
+Send and Receive are independent and async .
+
+```elixir
+# Just receive a message with in a process 
+pid02 =
+  spawn(fn ->
+    receive do
+      message -> IO.inspect(message, label: "message")
+    end
+  end)
+```
+
+```elixir
+Process.alive?(pid02)
+```
+
+```elixir
+send(pid02, :foo)
+```
+
+`receive` will try its best to match and process a single message from the queue.
+
+```elixir
+# Here, we send self with multiple messages 
+# But we intent to receive and process a certain pattern of message
+# What will happen 
+
+send(self(), :foo)
+send(self(), :bar)
+send(self(), :some_thing_else)
+
+# What if there is no matching clause? 
+receive do
+  :bar -> "got bar"
+end
+```
+
+```elixir
+# What if we want to cancel if something is not matched?
+send(self(), :foo)
+
+receive do
+  :bar -> "got bar"
+after
+  5000 ->
+    :time_out
+end
+```
+
+```elixir
+# Where is the message we send? It get lost? 
+receive do
+  message -> IO.inspect(message, label: "message")
+end
+```
+
+What we have see so far:
+
+* Every process has a pid.
+* There is a queue in the process to store arrived messages.
+* `receive` will try its best to match and process a single message.
+* The not processed message is left in the queue in the order they arrived.
+* It is better to include a default pattern to match all messages.
+
+<!-- livebook:{"break_markdown":true} -->
+
+#### (Optional) Process dictionary
+
+* One process has its own redis like storage.
+* Can only be set and get from current process.
+* Most of time (99%) you don't need to touch this.
+
+```elixir
+Process.put(:foo, :bar)
+Process.get(:foo)
+```
+
+```elixir
+Process.get()
+```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Concurrency Part 2: Task
+
+* Process in Elixir is very powerful. However, you probably don't need to use it directly.
+* Because Elixir provide abstraction for it to handle many corner cases.
+* One of them is `Task`.
+
+```elixir
+Task.start(fn ->
+  Process.sleep(5_000)
+  IO.puts("hi there")
+  47
+end)
+
+# The result of the lambda `47` is lost.
+```
+
+`Taks` is like spawn. Most of time, when you need to spawn a process, use `Task`.
+
+* Because Erlang and Elixir is a "let it crash" language.
+* It means, you want to isolate the failure to its least radius.
+* Erlang and Elixir not just let you do concurrency, it let you define failure domain.
+  * It means you can control if a process dead, what should happen to other processes, such as its parent processes, its sibling processes.
+  * Other language implement this pattern using k8s.
+  * This practise is battle tested for over 20 years.
+
+<!-- livebook:{"break_markdown":true} -->
+
+Let's practise some useful tasks.
+
+```elixir
+defmodule Fib do
+  def of(0), do: 0
+  def of(1), do: 1
+  def of(n), do: of(n - 1) + of(n - 2)
+end
+```
+
+TaskExample01 shows how we spawn a task in 2 different ways.
+
+* Using annonyous function
+* Use module + function + parameters
+
+It also shows how we receive the result from task.
+
+```elixir
+defmodule TaskExample01 do
+  def run_v1 do
+    IO.puts("Start the task")
+    # worker is the task descriptor
+    worker = Task.async(fn -> Fib.of(20) end)
+
+    IO.puts("Do something else")
+    IO.puts("Wait for the task")
+    # pass task descriptor when await
+    result = Task.await(worker)
+
+    IO.puts("The result is #{result}")
+  end
+
+  def run_v2 do
+    worker = Task.async(Fib, :of, [20])
+    result = Task.await(worker)
+    IO.puts("The result is #{result}")
+  end
+end
+```
+
+```elixir
+TaskExample01.run_v1()
+```
+
+V2 use module, fun, arg to create Task.
+
+```elixir
+Kino.Process.render_seq_trace(fn ->
+  TaskExample01.run_v2()
+end)
+```
+
+TaskExample02 shows how we spawn multiple tasks and collect their result based on their result.
+
+```elixir
+defmodule TaskExample02 do
+  @moduledoc """
+  This module shows how to run multiple tasks with a degree of parallel.
+  A task could be succeed, failed or timeout.
+  All results are collected
+  """
+  def run_with_parallel_degree(n) do
+    task_fun = fn arg ->
+      # Function to execute in parallel
+      Process.sleep(Enum.random(0..10) * 100)
+
+      case {rem(arg, 2) == 0, rem(arg, 5) == 0} do
+        # {true, true} ->
+        #   IO.puts("Task #{arg} oops")
+        #   raise "oops exception!" 
+
+        {true, _} ->
+          IO.puts("Task #{arg} failed")
+          {:failed, arg}
+
+        {_, true} ->
+          IO.puts("Task #{arg} failed")
+          {:failed, arg}
+
+        {_, _} ->
+          IO.puts("Task #{arg} completed")
+          {:succeed, arg}
+      end
+    end
+
+    Task.async_stream(1..20, task_fun,
+      max_concurrency: n,
+      timeout: 700,
+      on_timeout: :kill_task,
+      zip_input_on_exit: true
+    )
+    # If we don't provide [], the result will contain something like: [10, 8, 6, 4, 2 | {:ok, {:error, 1}}]
+    |> Enum.reduce(%{}, fn result, acc ->
+      case result do
+        {:ok, {:succeed, n}} ->
+          Map.update(acc, :succeed, [n], fn existing_ones -> [n | existing_ones] end)
+
+        {:ok, {:failed, n}} ->
+          Map.update(acc, :failed, [n], fn existing_ones -> [n | existing_ones] end)
+
+        {:exit, reason} ->
+          Map.update(acc, :timeout, [reason], fn existing_ones -> [reason | existing_ones] end)
+      end
+    end)
+  end
+end
+```
+
+```elixir
+TaskExample02.run_with_parallel_degree(4)
+```
+
+What if one of the task may crash?
+
+The `Task.Supervisor` module allows developers to dynamically create multiple supervised tasks.
+
+* We could create dynamic supervisor and refer the supervisor using pid.
+* Or, we could create static supervisor and refer the supervisor by its name.
+
+```elixir
+defmodule MyTaskSupervisor do
+  def dynamic_create() do
+    {:ok, supervisor_pid} = Task.Supervisor.start_link()
+    supervisor_pid
+  end
+
+  def static_create() do
+    Supervisor.start_link(
+      [
+        {Task.Supervisor, name: TaskDemo.TaskSupervisor}
+      ],
+      strategy: :one_for_one
+    )
+  end
+end
+```
+
+```elixir
+defmodule TaskExample02V2 do
+  @moduledoc """
+  This module shows how to run multiple tasks with a degree of parallel.
+  A task could be succeed, failed or timeout.
+  All results are collected
+  """
+  def run_with_parallel_degree(m_job, n_worker, supervisor) do
+    # Function to execute in parallel
+    task_fun = fn arg ->
+      # Sleep random time to simulate timeout
+      Process.sleep(Enum.random(0..10) * 100)
+
+      case {rem(arg, 2) == 0, rem(arg, 5) == 0} do
+        {true, true} ->
+          IO.puts("Task #{arg} oops")
+          raise "oops exception!"
+
+        {true, _} ->
+          IO.puts("Task #{arg} failed")
+          {:failed, arg}
+
+        {_, true} ->
+          IO.puts("Task #{arg} failed")
+          {:failed, arg}
+
+        {_, _} ->
+          IO.puts("Task #{arg} completed")
+          {:succeed, arg}
+      end
+    end
+
+    Task.Supervisor.async_stream_nolink(supervisor, 1..m_job, task_fun,
+      max_concurrency: n_worker,
+      timeout: 700,
+      on_timeout: :kill_task,
+      zip_input_on_exit: true
+    )
+    # If we don't provide [], the result will contain something like: [10, 8, 6, 4, 2 | {:ok, {:error, 1}}]
+    |> Enum.reduce(%{}, fn result, acc ->
+      case result do
+        {:ok, {:succeed, n}} ->
+          Map.update(acc, :succeed, [n], fn existing_ones -> [n | existing_ones] end)
+
+        {:ok, {:failed, n}} ->
+          Map.update(acc, :failed, [n], fn existing_ones -> [n | existing_ones] end)
+
+        {:exit, {n, {%RuntimeError{message: exception_message}, _}}} ->
+          Map.update(acc, :"#{exception_message}", [n], fn existing_ones ->
+            [n | existing_ones]
+          end)
+
+        {:exit, {n, :timeout}} ->
+          Map.update(acc, :timeout, [n], fn existing_ones -> [n | existing_ones] end)
+      end
+    end)
+  end
+end
+```
+
+```elixir
+# Use static supervisor by name. 
+# Notice, run this code more than one time will cause error 
+# because a static named is already registered.
+MyTaskSupervisor.static_create()
+```
+
+```elixir
+# Use dynamic supervisor
+supervisor_pid = MyTaskSupervisor.dynamic_create()
+TaskExample02V2.run_with_parallel_degree(10, 4, supervisor_pid)
+```
+
+```elixir
+# TaskExample02V2.run_with_parallel_degree(4, TaskDemo.TaskSupervisor)
+Kino.Process.render_seq_trace(fn ->
+  TaskExample02V2.run_with_parallel_degree(2, 2, TaskDemo.TaskSupervisor)
+end)
+```
+
+So, whenever you need to handle unexpected error, you could use supervisor to focus on the happy path.
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Concurrency Part 3: GenServer
+
+In Concurrency part one, we see how to use process and send and receive message. \
+However, what if we want to keep receiving messages and modify state based on the messages we received. \
+In other words, we want to abstract process as a stateful service. \
+In Elixir and Erlang, this abstraction is `GenServer` which means "Generic Server".
+
+<!-- livebook:{"break_markdown":true} -->
+
+First, let understand the basic idea behind `GenServer`. Let us implement a stateful service using just spawn and receive.
+
+In the following example, it shows how GenServer works in general.
+
+```elixir
+defmodule ServerProcess do
+  def start(callback_module) do
+    spawn(fn ->
+      initial_state = callback_module.init()
+      loop(callback_module, initial_state)
+    end)
+  end
+
+  # A *server process* is a beam process that use recurive call (loop) to handle different messages.
+  # Which module has loop to maintain some state, which one is server process.
+  defp loop(callback_module, current_state) do
+    receive do
+      {:call, request, caller} ->
+        {response, new_state} = callback_module.handle_call(request, current_state)
+
+        send(caller, {:response, response})
+        loop(callback_module, new_state)
+
+      {:cast, request} ->
+        new_state = callback_module.handle_cast(request, current_state)
+
+        loop(callback_module, new_state)
+    end
+  end
+
+  # this got called from client to invoke call (synchronous) message
+  def call(server_pid, request) do
+    send(server_pid, {:call, request, self()})
+
+    receive do
+      {:response, response} -> response
+    end
+  end
+
+  # this got called from client to invoke cast (asynchronous) message
+  def cast(server_pid, request) do
+    send(server_pid, {:cast, request})
+  end
+end
+```
+
+* The general idea is using `loop` to keep receive messages. It wraps the `callback_module` and its internal state.
+* The `callback_module` refers the module which defines
+  * the state we want to maintain
+  * how the state should be modified
+* The state is modified and kept between each loop.
+* Elixir and Erlang has tail call optimization so there is no need to worry stack-overflow in this case.
+
+```elixir
+defmodule KeyValueStore do
+  def init do
+    %{}
+  end
+
+  # handle_call will be invoked from ServerProcess's loop, inside receive
+  def handle_call({:put, key, value}, state) do
+    {:ok, Map.put(state, key, value)}
+  end
+
+  def handle_call({:get, key}, state) do
+    {Map.get(state, key), state}
+  end
+
+  def handle_cast({:put, key, value}, state) do
+    Map.put(state, key, value)
+  end
+
+  # Helper functions used by user such that we hide the ServerProcess's abstraction call/2 from user.
+  def put(pid, key, value) do
+    ServerProcess.cast(pid, {:put, key, value})
+  end
+
+  def get(pid, key) do
+    ServerProcess.call(pid, {:get, key})
+  end
+
+  def start do
+    ServerProcess.start(KeyValueStore)
+  end
+end
+```
+
+This module is passed into ServerPrcess and its functions are devided into 2 parts:
+
+* Those "handle_xxx" functions are called from inside ServerProcess's loop. This is very important: 
+  * Multiple calls to such functions are sync and queued in the loop's process.
+  * You should reduce the time complexity for those functions since they run inside in one process.  They could become our bottleneck.
+  * By convontion
+    * `handle_cast` means it is async operation, and we don't expect to receive actual result from server process.
+    * `handle_call` means it is sync option, and we are waiting the operation result.
+* The rest of functions are API functions which is used as abstraction to 
+  * Hide the implementation details about the internal state and its structure.
+  * Provide a convonient way for other module to use.
+
+<!-- livebook:{"break_markdown":true} -->
+
+Let see how to use this
+
+```elixir
+pid = KeyValueStore.start()
+```
+
+```elixir
+KeyValueStore.put(pid, :foo, :bar)
+```
+
+```elixir
+Kino.Process.render_seq_trace(fn ->
+  KeyValueStore.get(pid, :foo)
+end)
+```
+
+The above shows the idea that by using basic Elixir features, we could implement a stateful service. \
+In practise, you don't need to do this. Elixir and Erlang provide the powrful `GenServer`.
+
+<!-- livebook:{"break_markdown":true} -->
+
+To rewrite the above example using `GenServer`.
+
+```elixir
+defmodule KeyValueStoreV2 do
+  use GenServer
+
+  # APIs
+  def start do
+    GenServer.start(KeyValueStoreV2, nil)
+  end
+
+  def put(pid, key, value) do
+    GenServer.cast(pid, {:put, key, value})
+  end
+
+  def get(pid, key) do
+    GenServer.call(pid, {:get, key})
+  end
+
+  # Server Process
+  @impl GenServer
+  def init(_) do
+    {:ok, %{}}
+  end
+
+  # we need to define a handle_info/2 function to process custom plain message.
+  @impl GenServer
+  def handle_info(:cleanup, state) do
+    IO.puts("performing cleanup...")
+    {:noreply, state}
+  end
+
+  # It is very good practise to specify the @impl attribute for every callback function
+  @impl GenServer
+  def handle_cast({:put, key, value}, state) do
+    {:noreply, Map.put(state, key, value)}
+  end
+
+  @impl GenServer
+  def handle_call({:get, key}, _, state) do
+    {:reply, Map.get(state, key), state}
+  end
+end
+```
+
+Try it
+
+```elixir
+{:ok, pid} = KeyValueStoreV2.start()
+KeyValueStoreV2.put(pid, :some_key, :some_value)
+```
+
+```elixir
+KeyValueStoreV2.get(pid, :some_key)
+```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Concurrency Part 4: Supervision Tree
+
+Elixir is not just about concurrency. What make it shine is the OTP (Open Telecom Platform). It is based on Erlang and contains a huge set of libraries from BEAM that follow system design principles. \
+
+What you have saw like `Process`, `Task` and `GenServer` are all part of it. \
+The supervision is all about "what happens when something fails". 
+In other languages, the only way to avoid this is `try-catch` and it makes developer to write a lot of defensive code to handle a lot of corner cases.
+
+However, as system keeps growing it becomes inevitable that at some point there will be an exception or error occured and we couldn't anticipate. So, what can we do?
+
+In Erlang VM, we use supervision process to fix the crashed process.
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Distributed Node
+
+### How to connect two nodes together?
+
+#### On machine A's terminal
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+# start a node
+iex --name foo@172.17.180.96 --cookie some_token -S mix
+
+#show nodes connected to it
+iex(foo@172.17.180.96)2> Node.list
+[]
+```
+
+#### One machine B's terminal
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+iex --name bar@10.172.50.150 --cookie some_token
+
+# now connect to A
+iex(bar@10.172.50.150)1> Node.ping :"foo@172.17.180.96"
+:pong
+iex(bar@10.172.50.150)2> Node.self
+:"bar@10.172.50.150"
+iex(bar@10.172.50.150)3> Node.list
+[:"foo@172.17.180.96"]
+```
+
+#### On machine A's terminal
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+# Check nodes connected to it
+iex(foo@172.17.180.96)6> Node.self
+:"foo@172.17.180.96"
+iex(foo@172.17.180.96)7> Node.list
+[:"bar@10.172.50.150"]
+```
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Summary
+
+* What is node
+
+  In the context of distributed systems and Erlang/Elixir, a "node" refers to an individual running instance of the Erlang or Elixir runtime environment. Each node is a separate process or application instance that can communicate with other nodes in the same distributed system.
+
+* `--sname` vs `--name` option
+
+  * When using `--sname`, the node name is restricted to the local host only.
+  * When using `--name`, you can set an arbitrary node name that is not restricted to a single host.
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Use livebook as super REPL for a mix project
+
+First, let's start our mix project.
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+# On host A's terminal
+iex --name elixir_horizion@localhost --cookie some_token -S mix
+Erlang/OTP 25 [erts-13.2] [source] [64-bit] [smp:24:24] [ds:24:24:10] [async-threads:1] [jit:ns]
+
+Interactive Elixir (1.14.3) - press Ctrl+C to exit (type h() ENTER for help)
+iex(elixir_horizion@localhost)1> Node.self
+:elixir_horizion@localhost
+```
+
+Second, start livebook using container
+
+```sh
+docker run \
+--network=host \
+-e LIVEBOOK_DISTRIBUTION=name \
+-e LIVEBOOK_COOKIE=some_token \
+-e LIVEBOOK_NODE=livebook@localhost \
+-u $(id -u):$(id -g) \
+-v $(pwd):/data \
+ghcr.io/livebook-dev/livebook:0.8.1
+```
+
+At last, create a livebook and config the runtime settings:
+
+* select: Attached Node
+* Name: `elixir_horizion@localhost`
+* Token: `some_token`
+
+Then connect.
+
+<!-- livebook:{"break_markdown":true} -->
+
+Let's create some code block to test! \
+The following code blocks shows how we connecto to a running node and debug failed AKS workflows.
+
+```elixir
+alias Azure.Aks
+```
+
+First, let's fetch some latest workflows.
+
+```elixir
+Aks.update_latest_workflows(200)
+```
+
+Let's show only Aks related workflows.
+
+```elixir
+Aks.list_aks_workflows() |> Aks.summary_workflows()
+```
+
+Let's show only those failed AKS workflows.
+
+```elixir
+Aks.list_aks_failed_workflows() |> Aks.summary_workflows() |> Aks.filter_workflows_after_date()
+```
+
+Do we have the access to the remote node's environment?
+
+```elixir
+System.cmd("bash", ["-c", "ls ~/code"],
+  stderr_to_stdout: true,
+  into: IO.stream()
+)
+```
+
+Let's overwrite the kubectl config to make the kubectl command execute in the context of certain AKS cluster.
+
+```elixir
+Aks.overwrite_default_k8s_config("494b850a-2445-4451-bb52-e7f50eac575d")
+```
+
+Let's create a helper function to execute shell command from Elixir convoniently.
+
+```elixir
+defmodule ExecCmd do
+  def run(cmd_str) do
+    System.cmd("bash", ["-c", cmd_str],
+      stderr_to_stdout: true,
+      into: IO.stream()
+    )
+  end
+end
+```
+
+Now, we could run different kubectl commands. \
+Remember, these commands are executed from Livebook in the remote Erlang VM. \
+So, securety is very important. The connected nodes should be trusted.
+
+```elixir
+ExecCmd.run("kubectl get pods")
+```
+
+```elixir
+ExecCmd.run("kubectl get pvc")
+```
+
+```elixir
+ExecCmd.run("kubectl describe pvc xscn-workflow-pvc")
+```
+
+## References
+
+* [THE PROCESS ](https://www.youtube.com/watch?v=tY0-P4ovBqY) \
+  Explains the details of processes
+* [Concurrency and Parallelism in Elixir](https://exercism.org/blog/concurrency-parallelism-in-elixir) \
+  Explains the concurrency and parallelism are not different in Elixir.
+* [Do Interesting Things with Livebook and Your Production App](https://fly.io/docs/elixir/advanced-guides/interesting-things-with-livebook/)
+* About Tasks
+  * [Wait for tasks to finish inside a `Task.async_stream“ in case of an error](https://elixirforum.com/t/wait-for-tasks-to-finish-inside-a-task-async-stream-in-case-of-an-error/18384)
+                                      * [Task.async_stream_nolink](https://hexdocs.pm/elixir/1.13/Task.Supervisor.html#async_stream_nolink/4)
+
+                        ## Troubleshootings
+
+                        ### Could not visit the started livebook address.
+
+                        #### Description:
+
+                        You could start the livebook container and see it is running:
+
+                        ```
+                        [Livebook] Application running at http://0.0.0.0:8080/?token=4vz4dl6evq5p7x5o2eetzgxyfxisxumg
+                        ```
+
+                        At this stage, you usually could visit Livebook by click that address.
+                        However, you couldn't visit that address from windows 11.
+
+                        #### Solution
+
+                        From my experience, it is caused by I started the docker in WSL2 while the docker engine is using is Docker desktop in windows 11.
+
+                        * uninstall docker desktop from windows 11
+                        * [install docker in Ubuntu20.04](https://docs.docker.com/engine/install/ubuntu/)
+                        * Start livebook docker as before, you should click and visit Livebook from that address now.

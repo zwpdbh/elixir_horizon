@@ -1,0 +1,137 @@
+# Playground for Elixir Horizon project
+
+## Remote Connection Test
+
+Start elixir_horizion as
+
+```sh
+iex --name elixir_horizion@localhost --cookie some_token -S mix
+```
+
+<!-- livebook:{"break_markdown":true} -->
+
+Start livebook container and set attached node
+
+```sh
+docker run \
+--network=host \
+-e LIVEBOOK_DISTRIBUTION=name \
+-e LIVEBOOK_COOKIE=some_token \
+-e LIVEBOOK_NODE=livebook@localhost \
+-u $(id -u):$(id -g) \
+-v $(pwd):/data \
+ghcr.io/livebook-dev/livebook:0.8.1
+```
+
+Attach remote elixir_horizon node as:
+
+* name: `elixir_horizion@localhost`
+* cookie: `some_token`
+
+<!-- livebook:{"break_markdown":true} -->
+
+Test code
+
+```elixir
+alias Azure.Aks
+Aks.module_info()
+```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## NSP workflows
+
+```elixir
+alias Azure.Aks
+Aks.module_info()
+```
+
+Fetch the lates 200 workflows
+
+```elixir
+Aks.update_latest_workflows(200)
+Aks.list_workflows() |> length
+```
+
+Process NSP related workflows.
+
+```elixir
+defmodule Nsp do
+  def filter_nsp_related_workflows(workflows) do
+    workflows
+    |> Enum.filter(fn %{"definitionName" => definition_name} ->
+      definition_name
+      |> String.downcase()
+      |> String.contains?("scte")
+    end)
+  end
+
+  def summary_from_workflow_detail(
+        %{"data" => data_str, "definitionName" => definition_name, "id" => id} = _workflow
+      ) do
+    %{
+      "DeploymentName" => deployment_name,
+      "TenantName" => tenant_name
+      # "ScteDeploymentNameDst" => scte_deployment_name_dst,
+      # "ScteDeploymentNameSrc" => scte_deployment_name_src,
+    } = data_json = data_str |> Jason.decode!()
+
+    common_parameters = %{
+      id: id,
+      definition_name: definition_name,
+      deployment_name: deployment_name,
+      tenant_name: tenant_name
+    }
+
+    special_parameters = data_json |> process_different_scte_deployment_name
+
+    Map.merge(common_parameters, special_parameters)
+  end
+
+  def summary_nsp_workflows(workflows) do
+    workflows
+    |> Enum.map(fn each -> summary_from_workflow_detail(each) end)
+  end
+
+  def process_different_scte_deployment_name(
+        %{"ScteDeploymentName" => scte_deployment_name} = _data_json
+      ) do
+    %{scte_deployment_name: scte_deployment_name}
+  end
+
+  def process_different_scte_deployment_name(
+        %{
+          "ScteDeploymentNameDst" => scte_deployment_name_dst,
+          "ScteDeploymentNameSrc" => scte_deployment_name_src
+        } = _data_json
+      ) do
+    %{
+      scte_deployment_name_dst: scte_deployment_name_dst,
+      scte_deployment_name_src: scte_deployment_name_src
+    }
+  end
+
+  def process_different_scte_deployment_name(data_json) do
+    data_json
+  end
+end
+```
+
+```elixir
+top3 =
+  Aks.list_workflows()
+  |> Nsp.filter_nsp_related_workflows()
+  |> Enum.take(3)
+
+top3
+```
+
+```elixir
+%{"data" => data_str} = top3 |> Enum.at(2)
+data_str |> Jason.decode!()
+```
+
+```elixir
+top3
+|> Nsp.summary_nsp_workflows()
+```

@@ -4,7 +4,7 @@
 
 This is document and my learning node for [Production Code Upgrades In Elixir Series](https://blog.appsignal.com/2021/07/27/a-guide-to-hot-code-reloading-in-elixir.html)
 
-## How code Reloading in Elixir
+## Part 1: How code Reloading in Elixir
 
 From [Hot Code Reloading in Elixir](https://blog.appsignal.com/2018/10/16/elixir-alchemy-hot-code-reloading-in-elixir.html)
 
@@ -318,4 +318,20 @@ CodePurgeV3.get(pid)
 :code.purge(CodePurgeV3)
 ```
 
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Keep updating the states of GenServer processes
+
+When update GenServer, we also need to update the state. This is covered in above section: "Transforming State".
+
+<!-- livebook:{"break_markdown":true} -->
+
 TODO: [The main challenge is to keep updating the states of GenServer processes, so that any new code can work.](https://blog.appsignal.com/2021/07/27/a-guide-to-hot-code-reloading-in-elixir.html)
+
+## Part 2: Using Supervisors to Organize Your Elixir Application
+
+From [Using Supervisors to Organize Your Elixir Application](https://blog.appsignal.com/2021/08/23/using-supervisors-to-organize-your-elixir-application.html).
+
+In the previous chapter of this series, we looked at hot code reloading in Elixir and why we should use GenServer to implement long-running processes.
+
+But to organize a whole application, we need one more building block — supervisors. Let's take a look at supervisors in detail.

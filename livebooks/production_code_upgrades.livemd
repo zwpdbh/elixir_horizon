@@ -165,3 +165,157 @@ end
 
 * When we update GenServer, we need to keep a clause to make it accept old messages so as to provide backward compatibility of the previous version to do a clean upgrade.
 * For instance, if we changed the `handle_info` callback clause without left a previous clause, our GenServer will crash and report "no function clause matching".
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Code Purge in Elixir
+
+For testing example from: [Should You Code Purge in Elixir?](https://blog.appsignal.com/2021/07/27/a-guide-to-hot-code-reloading-in-elixir.html)
+
+```elixir
+CodePurge.pi()
+```
+
+We could recompile from Elixir code itself in Livebook.
+
+```elixir
+# This use a simple module from `elixir_horizion`. 
+# So we are using attached node running from mix.
+# Recompile the project in a separate shell
+ExecCmd.run("mix compile")
+```
+
+```elixir
+# In our iex shell, we reload the module code:
+:code.load_file(CodePurge)
+```
+
+Rerun the function, we could see the pi value changed.
+
+```elixir
+CodePurge.pi()
+```
+
+If we reload this module once more, it has error: '{:error, :not_purged}'.
+
+```elixir
+:code.load_file(CodePurge)
+```
+
+To solve the problem, we could use `:code.purge` and `:code.sofe_purge`.
+
+* They are used to handle running old code.
+* `:code.purge/1` kills processes running old code.
+* `:code.sofe_purge/1` fails if there are any processes running old code.
+
+```elixir
+:code.purge(CodePurge)
+:code.load_file(CodePurge)
+```
+
+```elixir
+:code.soft_purge(CodePurge)
+:code.load_file(CodePurge)
+```
+
+## How Not to Do a Code Upgrade
+
+```elixir
+# lib/code_purge/pi.ex
+defmodule CodePurgeV2.Pi do
+  def start_link do
+    spawn_link(&server/0)
+  end
+
+  def server do
+    receive do
+      {:get, from} ->
+        send(from, {:ok, 3.14})
+        CodePurgeV2.Pi.server()
+    end
+  end
+
+  def get(pid) do
+    send(pid, {:get, self()})
+
+    receive do
+      {:ok, value} ->
+        {:ok, value}
+    after
+      1000 ->
+        :error
+    end
+  end
+end
+```
+
+```elixir
+pid = CodePurgeV2.Pi.start_link()
+```
+
+```elixir
+CodePurgeV2.Pi.get(pid)
+```
+
+```elixir
+# Now, reload the module once (without any actual changes to functions) and 
+# try to purge it so that you can do the next 'upgrade':
+
+:code.load_file(CodePurgeV2.Pi)
+```
+
+```elixir
+# This will terminate the process of shell process (the Livebook code block will show "Aborted")
+:code.purge(CodePurgeV2.Pi)
+```
+
+This because the server didn't receive messages and so didn't transition to the new code after the first upgrade.
+
+Your code to follow `OPT` behaviour to be safely upgraded.
+That's why you should generally avoid `spawn` or `spawn_link` because your home-brewed servers or other long-running processes didn't use `OTP`.
+
+(see [Demystifying processes in Elixir](https://blog.appsignal.com/2017/05/18/elixir-alchemy-demystifying-processes-in-elixir.html))
+
+## How To Do a Code Upgrade Using GenServer
+
+```elixir
+defmodule CodePurgeV3 do
+  use GenServer
+
+  def start_link(value \\ 3.14) do
+    GenServer.start_link(__MODULE__, value)
+  end
+
+  def init(value) do
+    {:ok, value}
+  end
+
+  def handle_call(:get, _from, value) do
+    {:reply, value, value}
+  end
+
+  def get(pid) do
+    GenServer.call(pid, :get)
+  end
+end
+```
+
+Try to upgrade/purge the code of a running process several times.
+
+```elixir
+{:ok, pid} = CodePurgeV3.start_link()
+```
+
+```elixir
+CodePurgeV3.get(pid)
+```
+
+```elixir
+:code.load_file(CodePurgeV3)
+```
+
+```elixir
+:code.purge(CodePurgeV3)
+```
+
+TODO: [The main challenge is to keep updating the states of GenServer processes, so that any new code can work.](https://blog.appsignal.com/2021/07/27/a-guide-to-hot-code-reloading-in-elixir.html)

@@ -1,0 +1,167 @@
+# Production Code Upgrades
+
+## Introduction
+
+This is document and my learning node for [Production Code Upgrades In Elixir Series](https://blog.appsignal.com/2021/07/27/a-guide-to-hot-code-reloading-in-elixir.html)
+
+## How code Reloading in Elixir
+
+From [Hot Code Reloading in Elixir](https://blog.appsignal.com/2018/10/16/elixir-alchemy-hot-code-reloading-in-elixir.html)
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## The Erlang Code Server
+
+### Upgrading Modules
+
+This part shows Erlang's code server can run multiple versions of a module simultaneously.
+
+```elixir
+defmodule Counter do
+  def count(n) do
+    :timer.sleep(1000)
+    IO.puts("- #{inspect(self())}: #{n}")
+    count(n + 0)
+  end
+end
+```
+
+```elixir
+# Run the counter in a spawn process to not block terminal.
+spawn(Counter, :count, [0])
+```
+
+Now, we update the counter module to increment the number by 2 instead of 1. \
+
+* Reevaluate the changed module.
+* Rerun the above code block to spawn an other process.
+
+We could see two counters:
+
+* the old one is still running with old value
+* the new one is using new value.
+
+<!-- livebook:{"break_markdown":true} -->
+
+### The Erlang Code Server
+
+* The server can keep two version of a module in memory, one is new (current), another is old.
+* When a module is loaded, it becomes the current version.
+* Exported function from the old version are replaced by the ones from the new version.
+* If a process is already running when a new version of a module is loaded, it will stay on old version.
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Hot Reloading GenServers
+
+### Hot Reloading GenServers
+
+```elixir
+defmodule CountServer do
+  use GenServer
+
+  def start_link do
+    GenServer.start_link(__MODULE__, 0)
+  end
+
+  def init(state) do
+    Process.send_after(self(), :increment, 1000)
+    {:ok, state}
+  end
+
+  def handle_info(:increment, n) do
+    incremented = n + 0
+    IO.puts("- #{inspect(self())}: #{incremented}")
+
+    Process.send_after(self(), :increment, 1000)
+
+    {:noreply, incremented}
+  end
+end
+```
+
+Start the counter
+
+```elixir
+{:ok, pid} = CountServer.start_link()
+```
+
+```elixir
+Process.exit(pid, :kill)
+```
+
+Observe
+
+* Change the counter update.
+* Recompile the module.
+* The previous running process started to use new value immediately.
+* We do not need to start a new GenServer.
+
+<!-- livebook:{"break_markdown":true} -->
+
+Why GenServer can start to use new value immediately?
+
+* The GenServer's module and its spawned state are run in seperate processes.
+* The state which was kep in the GenServer process, was updated by calling out to the `CounterServer` module.
+* *External function calls*, like the GenServer process calling out to the `CounterServer` module, are always done on the current version of the module.
+
+See [Deconstructing Elixir's GenServers](https://blog.appsignal.com/2018/06/12/elixir-alchemy-deconstructing-genservers.html) for more details.
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Transforming State
+
+Although the state in the GenSever example got transformed correctly by the reloaded version of the CountServer module, there's one more scenario to look at.
+
+What happens when the new version of the implementation requires a different state? \
+We need to update the state when we upgrade the module to the new version.
+
+```elixir
+defmodule CountServer do
+  use GenServer
+
+  def start_link do
+    GenServer.start_link(__MODULE__, 0)
+  end
+
+  def init(state) do
+    Process.send_after(self(), :increment, 1000)
+    {:ok, state}
+  end
+
+  def handle_info(:increment, n) do
+    incremented = n + 2
+    IO.puts("- #{inspect(self())}: #{incremented}")
+
+    Process.send_after(self(), :increment, 1000)
+
+    {:noreply, incremented}
+  end
+
+  # ===> added
+  def code_change(_old_vsn, state, _extra) when rem(state, 2) == 1 do
+    {:ok, state - 1}
+  end
+
+  def code_change(_old_vsn, state, _extra) do
+    {:ok, state}
+  end
+end
+```
+
+```elixir
+{:ok, pid} = CountServer.start_link()
+```
+
+```elixir
+# If we test the module from iex, we may need this commands to help to better show the result.
+# In Livebook, this is not needed since we could reevaluate each block.
+:sys.suspend(pid)
+:sys.change_code(pid, CountServer, nil, [])
+:sys.resume(pid)
+```
+
+#### About Backward Compatibility
+
+* When we update GenServer, we need to keep a clause to make it accept old messages so as to provide backward compatibility of the previous version to do a clean upgrade.
+* For instance, if we changed the `handle_info` callback clause without left a previous clause, our GenServer will crash and report "no function clause matching".

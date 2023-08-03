@@ -1,153 +1,79 @@
-# ElixirHorizon
+# Use Livebook as Super REPL
 
-**TODO: Add description**
+## Description
 
-## Current VScode settings 
-```json 
-{
-  "security.workspace.trust.untrustedFiles": "open",
-  // For F#
-  "FSharp.codeLenses.signature.enabled": false,
-  "FSharp.pipelineHints.enabled": false,
-  "FSharp.lineLens.enabled": "never",
-  "FSharp.enableTreeView": true,
-  "FSharp.inlayHints.enabled": false,
-  "FSharp.inlayHints.typeAnnotations": false,
-  "FSharp.inlayHints.parameterNames": false,
-  "FSharp.smartIndent": true,
-  "[fsharp]": {
-    "editor.formatOnSave": false,
-    "editor.defaultFormatter": "Ionide.Ionide-fsharp"
-  },
-  "terminal.integrated.enableMultiLinePasteWarning": false,
-  "editor.fontFamily": "'Cascadia Mono', Consolas, 'Courier New', 'Anonymous Pro', monospace",
-  "editor.fontSize": 13,
-  "editor.fontLigatures": false,
-  "editor.bracketPairColorization.enabled": false,
-  "git.confirmSync": false,
-  "workbench.editorAssociations": {
-    "*.pdf": "latex-workshop-pdf-hook"
-  },
-  "explorer.confirmDelete": false,
-  "extensions.confirmedUriHandlerExtensionIds": [
-    "ms-dotnettools.dotnet-interactive-vscode",
-    "ms-dotnettools.vscode-dotnet-pack"
-  ],
-  "editor.wordWrap": "on",
-  "editor.mouseWheelZoom": true,
-  "git.enableSmartCommit": true,
-  "terminal.integrated.fontSize": 13,
-  "workbench.iconTheme": "material-icon-theme",
-  "workbench.sideBar.location": "right",
-  "editor.quickSuggestionsDelay": 10,
-  // Set on windows, how to configure some terminal
-  "terminal.integrated.profiles.windows": {
-    "Command Prompt": {
-      "path": "C:\\WINDOWS\\System32\\cmd.exe",
-      "args": [],
-      "icon": "terminal-cmd"
-    },
-    "Git Bash": {
-      "path": "C:\\Program Files\\Git\\bin\\bash.exe",
-      "args": ["--login", "-i"]
-    },
-    "Ubuntu-20.04 (WSL)": null
-  },
-  // Set on windows, the default terminal
-  "terminal.integrated.defaultProfile.windows": "Git Bash",
-  "terminal.integrated.profiles.linux": {
-    "Command Prompt": {
-      "path": "/usr/bin/bash"
-    }
-  },
-  "indentRainbow.ignoreErrorLanguages": [
-    "elixir",
-    "fsharp",
-    "json",
-    "javascript"
-  ],
+We could start our mix project with a naming node and connect to it using Livebook. \
+This enable use to use Livebook as a super REPL.
 
-  "editor.insertSpaces": true,
-  "editor.tabSize": 2,
-  "editor.formatOnSave": false,
-  "prettier.tabWidth": 2,
-  "prettier.useTabs": false,
-  "[jsonc]": {
-    "editor.tabSize": 2,
-    "editor.insertSpaces": true,
-    "editor.defaultFormatter": "esbenp.prettier-vscode",
-    "editor.formatOnSave": true
-  },
-  "indentRainbow.colorOnWhiteSpaceOnly": true,
-  // For Elixir
-  "[phoenix-heex]": {
-    "editor.formatOnSave": true,
-    "editor.defaultFormatter": "JakeBecker.elixir-ls"
-  },
-  "tailwindCSS.includeLanguages": {
-    "phoenix-heex": "html",
-    "elixir": "html"
-  },
-  "files.associations": {
-    "*.heex": "phoenix-heex",
-    "*.eex": "phoenix-heex"
-  },
-  "emmet.includeLanguages": {
-    "phoenix-heex": "html",
-    "html-eex": "html"
-  },
-  "emmet.triggerExpansionOnTab": true,
+## Start Mix project with naming node
 
-  "editor.suggestSelection": "recentlyUsedByPrefix",
-  "editor.wordBasedSuggestions": true,
-  "editor.quickSuggestions": {
-    "comments": "inline",
-    "strings": "on",
-    "other": "on"
-  },
-  "AllAutocomplete.minWordLength": 2,
-  "AllAutocomplete.maxLines": 1000,
-  "AllAutocomplete.showCurrentDocument": true,
-  "editor.suggest.filterGraceful": true,
-  "editor.snippetSuggestions": "bottom",
-  "editor.suggest.showSnippets": true,
-  "editor.suggest.showKeywords": true,
-  "editor.suggest.matchOnWordStartOnly": true,
-  "editor.snippets.codeActions.enabled": false,
-  "editor.suggest.snippetsPreventQuickSuggestions": false,
-  "editor.suggest.preview": true,
-  "editor.suggestOnTriggerCharacters": true,
-  "editor.acceptSuggestionOnCommitCharacter": true,
-  "editor.acceptSuggestionOnEnter": "on",
-  "editor.suggest.localityBonus": true,
-  "editor.parameterHints.enabled": true,
-  "editor.wordBasedSuggestionsMode": "allDocuments",
-  "elixirLS.dialyzerEnabled": true,
-  "elixirLS.signatureAfterComplete": false,
-  "elixirLS.fetchDeps": false,
-  "elixirLS.trace.server": "off",
-  "elixirLS.suggestSpecs": false,
-  "[elixir]": {
-    "editor.formatOnSave": true,
-    "editor.defaultFormatter": "JakeBecker.elixir-ls"
-  },
-  "files.autoSave": "afterDelay",
+```sh
+iex --name elixir_horizion@localhost --cookie some_token -S mix
+Erlang/OTP 25 [erts-13.2] [source] [64-bit] [smp:24:24] [ds:24:24:10] [async-threads:1] [jit:ns]
 
-  // MUST set this for OCaml development!
-  "files.eol": "\n",
-  "explorer.confirmDragAndDrop": false,
-  "[python]": {
-    "editor.formatOnType": true
-  },
-  // Set indent width in the explorer
-  "workbench.tree.indent": 15,
-  "Paket.autoInstall": true,
-  "[javascript]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
-  },
-  "[typescript]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
-  },
-  "settingsSync.ignoredSettings": ["-window.zoomLevel"]
-}
+Interactive Elixir (1.14.3) - press Ctrl+C to exit (type h() ENTER for help)
+iex(elixir_horizion@localhost)1> Node.self
+:elixir_horizion@localhost
 ```
+
+- `--name` specify we running node using full name mode.
+  - `:"elixir_horizion@localhost"` is the node name.
+  - There is also a `--sname` short name option.
+- `--cookie` is the shared token for all connecting nodes. Here is `some_token`.
+
+## Start Livebook using Container image
+
+```sh
+docker run \
+--network=host \
+-e LIVEBOOK_DISTRIBUTION=name \
+-e LIVEBOOK_COOKIE=some_token \
+-e LIVEBOOK_NODE=livebook@localhost \
+-u $(id -u):$(id -g) \
+-v $(pwd):/data \
+ghcr.io/livebook-dev/livebook:0.8.1
+```
+
+- `--network` specify the docker container we run use [Host network driver](https://docs.docker.com/network/drivers/host/).
+- Those LIVEBOOK options are from [Livebook README](https://github.com/livebook-dev/livebook).
+- Tag `0.8.1` from Livebook image support OTP25.
+- If succeed, it should oupt something like:
+
+  ```sh
+  [Livebook] Application running at http://0.0.0.0:8080/?token=gwc234cmrxsfnqkaeeu6hv7wjhg3qe2g
+  ```
+
+## Connect to the node from Livebook
+
+- Create or open a Livebook.
+- Go to
+
+  - Runtime settings
+  - Configure
+    - `Name` should be: `elixir_horizion@localhost`
+    - `Cookie` should be: the cookie we used above, such as `some_token`.
+  - If connect succeed, it should shows the reconnect and disconnect option along with memory metric for the connect node.
+
+- If connected, it means we could create code block and execute any code as if we are using `iex`.
+
+## Summary
+
+- What is a node \
+  In the context of distributed systems and Erlang/Elixir, a "node" refers to an individual running instance of the Erlang or Elixir runtime environment. Each node is a separate process or application instance that can communicate with other nodes in the same distributed system.
+
+- `--sname` vs `--name` option
+  - When using `--sname`, the node name is restricted to the local host only.
+  - When using `--name`, you can set an arbitrary node name that is not restricted to a single host.
+
+## Troubleshooting
+
+- Evaluator.IOProxy module into the remote node, potentially due to Erlang/OTP version mismatch.
+  - We have to make sure the Livebook's OTP version is compatibe with connecting node's OTP version.
+- docker: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?.
+  - On ubuntu (WSL), remember to start Docker service by: `sudo service docker start`.
+- Livebook docker image could start without problem, but could not visit its address from windows 11.
+  
+  From my experience, it is caused by I started the docker in WSL2 while the docker engine is using is Docker desktop in windows 11.
+  - uninstall docker desktop from windows 11 
+  - [install docker in Ubuntu20.04](https://docs.docker.com/engine/install/ubuntu/)
+  - Start livebook docker as before, you should click and visit Livebook from that address now.

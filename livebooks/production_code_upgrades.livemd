@@ -521,7 +521,7 @@ children_specs = for n <- [10000, 20000, 30000], do: Supervisor.child_spec({Coun
 
 ```elixir
 second_sup_spec = %{
-  id: :crafted_sup,
+  id: CraftSub,
   start: {Supervisor, :start_link, [children_specs, [strategy: :one_for_one]]},
   type: :supervisor,
   restart: :permanent,

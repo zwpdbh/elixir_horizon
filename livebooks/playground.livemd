@@ -30,12 +30,7 @@ Attach remote elixir_horizon node as:
 
 <!-- livebook:{"break_markdown":true} -->
 
-Test code
-
-```elixir
-alias Azure.Aks
-Aks.module_info()
-```
+Let's test some code from next section.
 
 <!-- livebook:{"branch_parent_index":0} -->
 
@@ -49,7 +44,7 @@ Aks.module_info()
 Fetch the lates 200 workflows
 
 ```elixir
-Aks.update_latest_workflows(200)
+Aks.update_latest_workflows(100)
 Aks.list_workflows() |> length
 ```
 
@@ -66,8 +61,19 @@ defmodule Nsp do
     end)
   end
 
+  def filter_finished_workflows(workflows) do
+    workflows
+    |> Enum.filter(fn x -> x.status != "Runnable" end)
+  end
+
   def summary_from_workflow_detail(
-        %{"data" => data_str, "definitionName" => definition_name, "id" => id} = _workflow
+        %{
+          "data" => data_str,
+          "definitionName" => definition_name,
+          "id" => id,
+          "status" => status,
+          "createTime" => create_time_str
+        } = workflow
       ) do
     %{
       "DeploymentName" => deployment_name,
@@ -80,12 +86,21 @@ defmodule Nsp do
       id: id,
       definition_name: definition_name,
       deployment_name: deployment_name,
-      tenant_name: tenant_name
+      tenant_name: tenant_name,
+      status: status,
+      create_time: How.Snippets.ConvertTime.get_datetime_in_shanghai_from_str(create_time_str)
     }
 
     special_parameters = data_json |> process_different_scte_deployment_name
 
-    Map.merge(common_parameters, special_parameters)
+    completion_time_str = Map.get(workflow, "completeTime", nil)
+
+    completion_in_shanghai =
+      How.Snippets.ConvertTime.get_datetime_in_shanghai_from_str(completion_time_str)
+
+    common_parameters
+    |> Map.merge(special_parameters)
+    |> Map.merge(%{complete_time: completion_in_shanghai})
   end
 
   def summary_nsp_workflows(workflows) do
@@ -94,25 +109,28 @@ defmodule Nsp do
   end
 
   def process_different_scte_deployment_name(
-        %{"ScteDeploymentName" => scte_deployment_name} = _data_json
+        %{
+          "DeploymentName" => scte_deployment_name,
+          "ScenarioId" => scte_id
+        } = _data_json
       ) do
-    %{scte_deployment_name: scte_deployment_name}
+    %{scte_deployment_name: scte_deployment_name, scte_deployment: scte_id}
   end
 
   def process_different_scte_deployment_name(
         %{
           "ScteDeploymentNameDst" => scte_deployment_name_dst,
-          "ScteDeploymentNameSrc" => scte_deployment_name_src
+          "ScteDeploymentNameSrc" => scte_deployment_name_src,
+          "ScenarioIdDst" => scte_dst_id,
+          "ScenarioIdSrc" => scte_src_id
         } = _data_json
       ) do
     %{
       scte_deployment_name_dst: scte_deployment_name_dst,
-      scte_deployment_name_src: scte_deployment_name_src
+      scte_deployment_name_src: scte_deployment_name_src,
+      scte_deployment_dst: scte_dst_id,
+      scte_deployment_src: scte_src_id
     }
-  end
-
-  def process_different_scte_deployment_name(data_json) do
-    data_json
   end
 end
 ```
@@ -127,11 +145,18 @@ top3
 ```
 
 ```elixir
-%{"data" => data_str} = top3 |> Enum.at(2)
+%{"data" => data_str} = top3 |> Enum.at(1)
 data_str |> Jason.decode!()
 ```
 
 ```elixir
 top3
 |> Nsp.summary_nsp_workflows()
+```
+
+```elixir
+Aks.list_workflows()
+|> Nsp.filter_nsp_related_workflows()
+|> Nsp.summary_nsp_workflows()
+|> Nsp.filter_finished_workflows()
 ```

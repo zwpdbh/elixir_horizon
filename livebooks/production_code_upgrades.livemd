@@ -4,13 +4,13 @@
 
 This is document and my learning node for [Production Code Upgrades In Elixir Series](https://blog.appsignal.com/2021/07/27/a-guide-to-hot-code-reloading-in-elixir.html)
 
-## How code Reloading in Elixir
+## Part 1: How code Reloading in Elixir
 
 From [Hot Code Reloading in Elixir](https://blog.appsignal.com/2018/10/16/elixir-alchemy-hot-code-reloading-in-elixir.html)
 
 <!-- livebook:{"branch_parent_index":0} -->
 
-## The Erlang Code Server
+## 1.1 The Erlang Code Server
 
 ### Upgrading Modules
 
@@ -52,7 +52,7 @@ We could see two counters:
 
 <!-- livebook:{"branch_parent_index":0} -->
 
-## Hot Reloading GenServers
+## 1.2 Hot Reloading GenServers
 
 ### Hot Reloading GenServers
 
@@ -109,7 +109,7 @@ See [Deconstructing Elixir's GenServers](https://blog.appsignal.com/2018/06/12/e
 
 <!-- livebook:{"branch_parent_index":0} -->
 
-## Transforming State
+## 1.3 Transforming State
 
 Although the state in the GenSever example got transformed correctly by the reloaded version of the CountServer module, there's one more scenario to look at.
 
@@ -168,7 +168,7 @@ end
 
 <!-- livebook:{"branch_parent_index":0} -->
 
-## Code Purge in Elixir
+## 1.4 Code Purge in Elixir
 
 For testing example from: [Should You Code Purge in Elixir?](https://blog.appsignal.com/2021/07/27/a-guide-to-hot-code-reloading-in-elixir.html)
 
@@ -218,7 +218,9 @@ To solve the problem, we could use `:code.purge` and `:code.sofe_purge`.
 :code.load_file(CodePurge)
 ```
 
-## How Not to Do a Code Upgrade
+<!-- livebook:{"branch_parent_index":0} -->
+
+## 1.5 How Not to Do a Code Upgrade
 
 ```elixir
 # lib/code_purge/pi.ex
@@ -276,7 +278,9 @@ That's why you should generally avoid `spawn` or `spawn_link` because your home-
 
 (see [Demystifying processes in Elixir](https://blog.appsignal.com/2017/05/18/elixir-alchemy-demystifying-processes-in-elixir.html))
 
-## How To Do a Code Upgrade Using GenServer
+<!-- livebook:{"branch_parent_index":0} -->
+
+## 1.6 How To Do a Code Upgrade Using GenServer
 
 ```elixir
 defmodule CodePurgeV3 do
@@ -318,4 +322,225 @@ CodePurgeV3.get(pid)
 :code.purge(CodePurgeV3)
 ```
 
+<!-- livebook:{"branch_parent_index":0} -->
+
+## 1.7 Keep updating the states of GenServer processes
+
+When update GenServer, we also need to update the state. This is covered in above section: "1.3 Transforming State".
+
+<!-- livebook:{"break_markdown":true} -->
+
 TODO: [The main challenge is to keep updating the states of GenServer processes, so that any new code can work.](https://blog.appsignal.com/2021/07/27/a-guide-to-hot-code-reloading-in-elixir.html)
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Part 2: Using Supervisors to Organize Your Elixir Application
+
+From [Using Supervisors to Organize Your Elixir Application](https://blog.appsignal.com/2021/08/23/using-supervisors-to-organize-your-elixir-application.html).
+
+In the previous chapter of this series, we looked at hot code reloading in Elixir and why we should use GenServer to implement long-running processes.
+
+But to organize a whole application, we need one more building block — supervisors. Let's take a look at supervisors in detail.
+
+```elixir
+defmodule CounterV4 do
+  use GenServer
+  require Logger
+
+  @interval 100
+
+  def start_link(start_from, opts \\ []) do
+    GenServer.start_link(__MODULE__, start_from, opts)
+  end
+
+  def get(pid) do
+    GenServer.call(pid, :get)
+  end
+
+  def init(start_from) do
+    st = %{
+      current: start_from,
+      timer: :erlang.start_timer(@interval, self(), :tick)
+    }
+
+    {:ok, st}
+  end
+
+  def handle_call(:get, _from, st) do
+    {:reply, st.current, st}
+  end
+
+  def handle_info({:timeout, _timer_ref, :tick}, st) do
+    new_timer = :erlang.start_timer(@interval, self(), :tick)
+    :erlang.cancel_timer(st.timer)
+
+    {:noreply, %{st | current: st.current + 1, timer: new_timer}}
+  end
+end
+```
+
+```elixir
+children = [
+  {CounterV4, 10000}
+]
+
+opts = [strategy: :one_for_one, name: MyApp.Supervisor]
+Supervisor.start_link(children, opts)
+```
+
+Start `CounterV4` with created supervisor.
+
+```elixir
+[{_, pid, _, _}] = Supervisor.which_children(MyApp.Supervisor)
+```
+
+```elixir
+CounterV4.get(pid)
+```
+
+Kill the child which is `CounterV4`.
+
+```elixir
+Process.exit(pid, :shutdown)
+```
+
+We could see the `CounterV4` is restarted by the supervisor.
+
+```elixir
+Supervisor.which_children(MyApp.Supervisor)
+```
+
+Let's see the supervision tree.
+
+```elixir
+Kino.Process.render_sup_tree(MyApp.Supervisor)
+```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## 2.1 Adding GenServers to Custom Supervisors
+
+First, let us create callback module for `MyApp.Supervisor`.
+
+```elixir
+defmodule CounterSup do
+  use Supervisor
+
+  def start_link(start_numbers) do
+    Supervisor.start_link(__MODULE__, start_numbers, name: __MODULE__)
+  end
+
+  @impl true
+  def init(start_numbers) do
+    children =
+      for start_number <- start_numbers do
+        # We can't just use `{OurNewApp.Counter, start_number}`
+        # because we need different ids for children
+
+        Supervisor.child_spec({CounterV4, start_number}, id: start_number)
+      end
+
+    Supervisor.init(children, strategy: :one_for_one)
+  end
+end
+```
+
+Update how we start `MyApp.Supervisor`.
+It doesn't start `CounterV4` directly. Instead, it start `CounterSup`.
+
+```elixir
+children = [
+  {CounterSup, [10000, 20000]}
+]
+
+opts = [strategy: :one_for_one, name: MyApp.SupervisorV2]
+Supervisor.start_link(children, opts)
+```
+
+```elixir
+Supervisor.which_children(MyApp.SupervisorV2)
+```
+
+```elixir
+Supervisor.which_children(CounterSup)
+```
+
+Let's visualize the supervision tree.
+
+```elixir
+Kino.Process.render_sup_tree(MyApp.SupervisorV2)
+```
+
+Now, let's add the 3rd child and visualize the supervision tree.
+
+```elixir
+new_children_spec = Supervisor.child_spec({CounterV4, 30000}, id: 30000)
+```
+
+```elixir
+Supervisor.start_child(CounterSup, new_children_spec)
+```
+
+```elixir
+Supervisor.which_children(CounterSup)
+```
+
+```elixir
+Kino.Process.render_sup_tree(MyApp.SupervisorV2)
+```
+
+We could also remove a child from supervision tree.
+
+How do I programatically to get pid from string?
+(see: [How to convert a pid string from logs into pid values?](https://hexdocs.pm/iex/IEx.Helpers.html#pid/1))
+
+```elixir
+problem_child = IEx.Helpers.pid("0.859.0")
+Process.alive?(problem_child)
+```
+
+However, this is not the child_id.
+The child_id is the one we specified using `Supervisor.child_spec`.
+
+```elixir
+# We have to first terminate a running child then delete it
+Supervisor.terminate_child(CounterSup, 10000)
+Supervisor.delete_child(CounterSup, 10000)
+```
+
+```elixir
+# Visualize again
+Kino.Process.render_sup_tree(MyApp.SupervisorV2)
+```
+
+Let's add another supervision tree under `MyApp.SupervisorV2`
+
+```elixir
+children_specs = for n <- [10000, 20000, 30000], do: Supervisor.child_spec({CounterV4, n}, id: n)
+```
+
+```elixir
+second_sup_spec = %{
+  id: :crafted_sup,
+  start: {Supervisor, :start_link, [children_specs, [strategy: :one_for_one]]},
+  type: :supervisor,
+  restart: :permanent,
+  shutdown: 5000
+}
+```
+
+```elixir
+Supervisor.start_child(MyApp.SupervisorV2, second_sup_spec)
+```
+
+```elixir
+Supervisor.which_children(MyApp.SupervisorV2)
+```
+
+```elixir
+Kino.Process.render_sup_tree(MyApp.SupervisorV2)
+```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## 2.2 Examples of Custom Supervisor Usage

@@ -1,0 +1,546 @@
+# Production Code Upgrades
+
+## Introduction
+
+This is document and my learning node for [Production Code Upgrades In Elixir Series](https://blog.appsignal.com/2021/07/27/a-guide-to-hot-code-reloading-in-elixir.html)
+
+## Part 1: How code Reloading in Elixir
+
+From [Hot Code Reloading in Elixir](https://blog.appsignal.com/2018/10/16/elixir-alchemy-hot-code-reloading-in-elixir.html)
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## 1.1 The Erlang Code Server
+
+### Upgrading Modules
+
+This part shows Erlang's code server can run multiple versions of a module simultaneously.
+
+```elixir
+defmodule Counter do
+  def count(n) do
+    :timer.sleep(1000)
+    IO.puts("- #{inspect(self())}: #{n}")
+    count(n + 0)
+  end
+end
+```
+
+```elixir
+# Run the counter in a spawn process to not block terminal.
+spawn(Counter, :count, [0])
+```
+
+Now, we update the counter module to increment the number by 2 instead of 1. \
+
+* Reevaluate the changed module.
+* Rerun the above code block to spawn an other process.
+
+We could see two counters:
+
+* the old one is still running with old value
+* the new one is using new value.
+
+<!-- livebook:{"break_markdown":true} -->
+
+### The Erlang Code Server
+
+* The server can keep two version of a module in memory, one is new (current), another is old.
+* When a module is loaded, it becomes the current version.
+* Exported function from the old version are replaced by the ones from the new version.
+* If a process is already running when a new version of a module is loaded, it will stay on old version.
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## 1.2 Hot Reloading GenServers
+
+### Hot Reloading GenServers
+
+```elixir
+defmodule CountServer do
+  use GenServer
+
+  def start_link do
+    GenServer.start_link(__MODULE__, 0)
+  end
+
+  def init(state) do
+    Process.send_after(self(), :increment, 1000)
+    {:ok, state}
+  end
+
+  def handle_info(:increment, n) do
+    incremented = n + 0
+    IO.puts("- #{inspect(self())}: #{incremented}")
+
+    Process.send_after(self(), :increment, 1000)
+
+    {:noreply, incremented}
+  end
+end
+```
+
+Start the counter
+
+```elixir
+{:ok, pid} = CountServer.start_link()
+```
+
+```elixir
+Process.exit(pid, :kill)
+```
+
+Observe
+
+* Change the counter update.
+* Recompile the module.
+* The previous running process started to use new value immediately.
+* We do not need to start a new GenServer.
+
+<!-- livebook:{"break_markdown":true} -->
+
+Why GenServer can start to use new value immediately?
+
+* The GenServer's module and its spawned state are run in seperate processes.
+* The state which was kep in the GenServer process, was updated by calling out to the `CounterServer` module.
+* *External function calls*, like the GenServer process calling out to the `CounterServer` module, are always done on the current version of the module.
+
+See [Deconstructing Elixir's GenServers](https://blog.appsignal.com/2018/06/12/elixir-alchemy-deconstructing-genservers.html) for more details.
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## 1.3 Transforming State
+
+Although the state in the GenSever example got transformed correctly by the reloaded version of the CountServer module, there's one more scenario to look at.
+
+What happens when the new version of the implementation requires a different state? \
+We need to update the state when we upgrade the module to the new version.
+
+```elixir
+defmodule CountServer do
+  use GenServer
+
+  def start_link do
+    GenServer.start_link(__MODULE__, 0)
+  end
+
+  def init(state) do
+    Process.send_after(self(), :increment, 1000)
+    {:ok, state}
+  end
+
+  def handle_info(:increment, n) do
+    incremented = n + 2
+    IO.puts("- #{inspect(self())}: #{incremented}")
+
+    Process.send_after(self(), :increment, 1000)
+
+    {:noreply, incremented}
+  end
+
+  # ===> added
+  def code_change(_old_vsn, state, _extra) when rem(state, 2) == 1 do
+    {:ok, state - 1}
+  end
+
+  def code_change(_old_vsn, state, _extra) do
+    {:ok, state}
+  end
+end
+```
+
+```elixir
+{:ok, pid} = CountServer.start_link()
+```
+
+```elixir
+# If we test the module from iex, we may need this commands to help to better show the result.
+# In Livebook, this is not needed since we could reevaluate each block.
+:sys.suspend(pid)
+:sys.change_code(pid, CountServer, nil, [])
+:sys.resume(pid)
+```
+
+#### About Backward Compatibility
+
+* When we update GenServer, we need to keep a clause to make it accept old messages so as to provide backward compatibility of the previous version to do a clean upgrade.
+* For instance, if we changed the `handle_info` callback clause without left a previous clause, our GenServer will crash and report "no function clause matching".
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## 1.4 Code Purge in Elixir
+
+For testing example from: [Should You Code Purge in Elixir?](https://blog.appsignal.com/2021/07/27/a-guide-to-hot-code-reloading-in-elixir.html)
+
+```elixir
+CodePurge.pi()
+```
+
+We could recompile from Elixir code itself in Livebook.
+
+```elixir
+# This use a simple module from `elixir_horizion`. 
+# So we are using attached node running from mix.
+# Recompile the project in a separate shell
+ExecCmd.run("mix compile")
+```
+
+```elixir
+# In our iex shell, we reload the module code:
+:code.load_file(CodePurge)
+```
+
+Rerun the function, we could see the pi value changed.
+
+```elixir
+CodePurge.pi()
+```
+
+If we reload this module once more, it has error: '{:error, :not_purged}'.
+
+```elixir
+:code.load_file(CodePurge)
+```
+
+To solve the problem, we could use `:code.purge` and `:code.sofe_purge`.
+
+* They are used to handle running old code.
+* `:code.purge/1` kills processes running old code.
+* `:code.sofe_purge/1` fails if there are any processes running old code.
+
+```elixir
+:code.purge(CodePurge)
+:code.load_file(CodePurge)
+```
+
+```elixir
+:code.soft_purge(CodePurge)
+:code.load_file(CodePurge)
+```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## 1.5 How Not to Do a Code Upgrade
+
+```elixir
+# lib/code_purge/pi.ex
+defmodule CodePurgeV2.Pi do
+  def start_link do
+    spawn_link(&server/0)
+  end
+
+  def server do
+    receive do
+      {:get, from} ->
+        send(from, {:ok, 3.14})
+        CodePurgeV2.Pi.server()
+    end
+  end
+
+  def get(pid) do
+    send(pid, {:get, self()})
+
+    receive do
+      {:ok, value} ->
+        {:ok, value}
+    after
+      1000 ->
+        :error
+    end
+  end
+end
+```
+
+```elixir
+pid = CodePurgeV2.Pi.start_link()
+```
+
+```elixir
+CodePurgeV2.Pi.get(pid)
+```
+
+```elixir
+# Now, reload the module once (without any actual changes to functions) and 
+# try to purge it so that you can do the next 'upgrade':
+
+:code.load_file(CodePurgeV2.Pi)
+```
+
+```elixir
+# This will terminate the process of shell process (the Livebook code block will show "Aborted")
+:code.purge(CodePurgeV2.Pi)
+```
+
+This because the server didn't receive messages and so didn't transition to the new code after the first upgrade.
+
+Your code to follow `OPT` behaviour to be safely upgraded.
+That's why you should generally avoid `spawn` or `spawn_link` because your home-brewed servers or other long-running processes didn't use `OTP`.
+
+(see [Demystifying processes in Elixir](https://blog.appsignal.com/2017/05/18/elixir-alchemy-demystifying-processes-in-elixir.html))
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## 1.6 How To Do a Code Upgrade Using GenServer
+
+```elixir
+defmodule CodePurgeV3 do
+  use GenServer
+
+  def start_link(value \\ 3.14) do
+    GenServer.start_link(__MODULE__, value)
+  end
+
+  def init(value) do
+    {:ok, value}
+  end
+
+  def handle_call(:get, _from, value) do
+    {:reply, value, value}
+  end
+
+  def get(pid) do
+    GenServer.call(pid, :get)
+  end
+end
+```
+
+Try to upgrade/purge the code of a running process several times.
+
+```elixir
+{:ok, pid} = CodePurgeV3.start_link()
+```
+
+```elixir
+CodePurgeV3.get(pid)
+```
+
+```elixir
+:code.load_file(CodePurgeV3)
+```
+
+```elixir
+:code.purge(CodePurgeV3)
+```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## 1.7 Keep updating the states of GenServer processes
+
+When update GenServer, we also need to update the state. This is covered in above section: "1.3 Transforming State".
+
+<!-- livebook:{"break_markdown":true} -->
+
+TODO: [The main challenge is to keep updating the states of GenServer processes, so that any new code can work.](https://blog.appsignal.com/2021/07/27/a-guide-to-hot-code-reloading-in-elixir.html)
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Part 2: Using Supervisors to Organize Your Elixir Application
+
+From [Using Supervisors to Organize Your Elixir Application](https://blog.appsignal.com/2021/08/23/using-supervisors-to-organize-your-elixir-application.html).
+
+In the previous chapter of this series, we looked at hot code reloading in Elixir and why we should use GenServer to implement long-running processes.
+
+But to organize a whole application, we need one more building block — supervisors. Let's take a look at supervisors in detail.
+
+```elixir
+defmodule CounterV4 do
+  use GenServer
+  require Logger
+
+  @interval 100
+
+  def start_link(start_from, opts \\ []) do
+    GenServer.start_link(__MODULE__, start_from, opts)
+  end
+
+  def get(pid) do
+    GenServer.call(pid, :get)
+  end
+
+  def init(start_from) do
+    st = %{
+      current: start_from,
+      timer: :erlang.start_timer(@interval, self(), :tick)
+    }
+
+    {:ok, st}
+  end
+
+  def handle_call(:get, _from, st) do
+    {:reply, st.current, st}
+  end
+
+  def handle_info({:timeout, _timer_ref, :tick}, st) do
+    new_timer = :erlang.start_timer(@interval, self(), :tick)
+    :erlang.cancel_timer(st.timer)
+
+    {:noreply, %{st | current: st.current + 1, timer: new_timer}}
+  end
+end
+```
+
+```elixir
+children = [
+  {CounterV4, 10000}
+]
+
+opts = [strategy: :one_for_one, name: MyApp.Supervisor]
+Supervisor.start_link(children, opts)
+```
+
+Start `CounterV4` with created supervisor.
+
+```elixir
+[{_, pid, _, _}] = Supervisor.which_children(MyApp.Supervisor)
+```
+
+```elixir
+CounterV4.get(pid)
+```
+
+Kill the child which is `CounterV4`.
+
+```elixir
+Process.exit(pid, :shutdown)
+```
+
+We could see the `CounterV4` is restarted by the supervisor.
+
+```elixir
+Supervisor.which_children(MyApp.Supervisor)
+```
+
+Let's see the supervision tree.
+
+```elixir
+Kino.Process.render_sup_tree(MyApp.Supervisor)
+```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## 2.1 Adding GenServers to Custom Supervisors
+
+First, let us create callback module for `MyApp.Supervisor`.
+
+```elixir
+defmodule CounterSup do
+  use Supervisor
+
+  def start_link(start_numbers) do
+    Supervisor.start_link(__MODULE__, start_numbers, name: __MODULE__)
+  end
+
+  @impl true
+  def init(start_numbers) do
+    children =
+      for start_number <- start_numbers do
+        # We can't just use `{OurNewApp.Counter, start_number}`
+        # because we need different ids for children
+
+        Supervisor.child_spec({CounterV4, start_number}, id: start_number)
+      end
+
+    Supervisor.init(children, strategy: :one_for_one)
+  end
+end
+```
+
+Update how we start `MyApp.Supervisor`.
+It doesn't start `CounterV4` directly. Instead, it start `CounterSup`.
+
+```elixir
+children = [
+  {CounterSup, [10000, 20000]}
+]
+
+opts = [strategy: :one_for_one, name: MyApp.SupervisorV2]
+Supervisor.start_link(children, opts)
+```
+
+```elixir
+Supervisor.which_children(MyApp.SupervisorV2)
+```
+
+```elixir
+Supervisor.which_children(CounterSup)
+```
+
+Let's visualize the supervision tree.
+
+```elixir
+Kino.Process.render_sup_tree(MyApp.SupervisorV2)
+```
+
+Now, let's add the 3rd child and visualize the supervision tree.
+
+```elixir
+new_children_spec = Supervisor.child_spec({CounterV4, 30000}, id: 30000)
+```
+
+```elixir
+Supervisor.start_child(CounterSup, new_children_spec)
+```
+
+```elixir
+Supervisor.which_children(CounterSup)
+```
+
+```elixir
+Kino.Process.render_sup_tree(MyApp.SupervisorV2)
+```
+
+We could also remove a child from supervision tree.
+
+How do I programatically to get pid from string?
+(see: [How to convert a pid string from logs into pid values?](https://hexdocs.pm/iex/IEx.Helpers.html#pid/1))
+
+```elixir
+problem_child = IEx.Helpers.pid("0.859.0")
+Process.alive?(problem_child)
+```
+
+However, this is not the child_id.
+The child_id is the one we specified using `Supervisor.child_spec`.
+
+```elixir
+# We have to first terminate a running child then delete it
+Supervisor.terminate_child(CounterSup, 10000)
+Supervisor.delete_child(CounterSup, 10000)
+```
+
+```elixir
+# Visualize again
+Kino.Process.render_sup_tree(MyApp.SupervisorV2)
+```
+
+Let's add another supervision tree under `MyApp.SupervisorV2`
+
+```elixir
+children_specs = for n <- [10000, 20000, 30000], do: Supervisor.child_spec({CounterV4, n}, id: n)
+```
+
+```elixir
+second_sup_spec = %{
+  id: :crafted_sup,
+  start: {Supervisor, :start_link, [children_specs, [strategy: :one_for_one]]},
+  type: :supervisor,
+  restart: :permanent,
+  shutdown: 5000
+}
+```
+
+```elixir
+Supervisor.start_child(MyApp.SupervisorV2, second_sup_spec)
+```
+
+```elixir
+Supervisor.which_children(MyApp.SupervisorV2)
+```
+
+```elixir
+Kino.Process.render_sup_tree(MyApp.SupervisorV2)
+```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## 2.2 Examples of Custom Supervisor Usage

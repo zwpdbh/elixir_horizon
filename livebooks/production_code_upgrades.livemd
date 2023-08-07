@@ -737,10 +737,11 @@ Please note that if you have child supervisors within your main supervisor, they
 
 <!-- livebook:{"break_markdown":true} -->
 
-This means, we have to create reall application for demo.
+This means, we have to create reall application for testing.  \
+The supervisor module has no different from previous example except a new name.
 
 ```elixir
-defmodule CounterSupV3 do
+defmodule CounterSupV4 do
   use Supervisor
 
   def start_link(start_numbers) do
@@ -766,24 +767,28 @@ defmodule CounterSupV3 do
 end
 ```
 
+However, the below application callback module could not be tested by executing Livebook. \
+We need to either modify our existing application or create a new one to test.
+
 ```elixir
-defmodule CounterApp do
+defmodule App do
   use Application
 
   @impl true
   def start(_type, _args) do
+    # Defines the children we need to start. Here, when App start, we want to start CounterSupV4
     children = [
-      {CounterSupV2, [10000, 20000]}
+      {CounterSupV4, [10000, 20000]}
     ]
 
-    opts = [strategy: :one_for_one, name: MyApp.SupervisorV4]
+    opts = [strategy: :one_for_one, name: MyCounterAppSupervisor]
     Supervisor.start_link(children, opts)
   end
 
   @impl true
   def prep_stop(st) do
     stop_tasks =
-      for {_, pid, _, _} <- Supervisor.which_children(CounterSupV3) do
+      for {_, pid, _, _} <- Supervisor.which_children(CounterSupV4) do
         Task.async(fn ->
           :ok = CounterV6.stop_gracefully(pid)
         end)
@@ -794,3 +799,32 @@ defmodule CounterApp do
   end
 end
 ```
+
+### Recap steps to add a supervisor to an application.
+
+* In your application's `mix.exs` file define the callback module to use, such as
+
+  ```elixir
+  def application do
+    [
+      extra_applications: [:logger],
+      mod: {App, []}
+    ]
+  end
+  ```
+
+* In your application callback module, the application callback's job is to start a supervision tree.
+
+  * Define `use Application`
+  * Define which supervisor you want to start by implementing the `start/2`.
+
+* Make sure the supervisors are configed properly. We could start a supervisor in two ways:
+
+  * Use `Supervisor.start_link`, with `children` and `opts`.
+  * Call supervisor's `start_link` directly.
+
+More details check [the application call back](https://elixir-lang.org/getting-started/mix-otp/supervisor-and-application.html#the-application-callback).
+
+## Part 3: Application Code Upgrades in Elixir
+
+From [Application Code Upgrades in Elixir](https://blog.appsignal.com/2021/09/14/application-code-upgrades-in-elixir.html)

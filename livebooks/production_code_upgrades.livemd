@@ -828,3 +828,5 @@ More details check [the application call back](https://elixir-lang.org/getting-s
 ## Part 3: Application Code Upgrades in Elixir
 
 From [Application Code Upgrades in Elixir](https://blog.appsignal.com/2021/09/14/application-code-upgrades-in-elixir.html)
+
+Must also read through this: [Lear you some Erlang -- Leveling Up in The Process Quest](https://learnyousomeerlang.com/relups)

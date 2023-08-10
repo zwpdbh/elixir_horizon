@@ -110,11 +110,20 @@ defmodule Nsp do
 
   def process_different_scte_deployment_name(
         %{
-          "DeploymentName" => scte_deployment_name,
+          "ScteDeploymentName" => scte_deployment_name,
           "ScenarioId" => scte_id
         } = _data_json
       ) do
     %{scte_deployment_name: scte_deployment_name, scte_deployment: scte_id}
+  end
+
+  def process_different_scte_deployment_name(
+        %{
+          "DeploymentName" => scte_deployment_name,
+          "ScenarioId" => scte_id
+        } = _data_json
+      ) do
+    %{deployment_name_from_data: scte_deployment_name, scte_deployment: scte_id}
   end
 
   def process_different_scte_deployment_name(
@@ -132,6 +141,19 @@ defmodule Nsp do
       scte_deployment_src: scte_src_id
     }
   end
+
+  def filter_nsp_copy_workloads(workloads) do
+    workloads
+    |> Enum.filter(fn x -> filter_nsp_copy_workload(x) end)
+  end
+
+  defp filter_nsp_copy_workload(%{scte_deployment_name_dst: _some} = workload) do
+    workload
+  end
+
+  defp filter_nsp_copy_workload(%{} = _workload) do
+    nil
+  end
 end
 ```
 
@@ -145,7 +167,7 @@ top3
 ```
 
 ```elixir
-%{"data" => data_str} = top3 |> Enum.at(1)
+%{"data" => data_str} = top3 |> Enum.at(2)
 data_str |> Jason.decode!()
 ```
 
@@ -158,5 +180,107 @@ top3
 Aks.list_workflows()
 |> Nsp.filter_nsp_related_workflows()
 |> Nsp.summary_nsp_workflows()
-|> Nsp.filter_finished_workflows()
+|> Nsp.filter_nsp_copy_workloads()
+```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## AKS workflows
+
+```elixir
+alias Azure.Aks
+Aks.module_info()
+```
+
+```elixir
+Aks.update_latest_workflows(100)
+Aks.list_workflows() |> length
+```
+
+```elixir
+Aks.list_aks_workflows_after()
+|> Aks.summary_workflows()
+|> Enum.map(fn x -> %{definition_name: x.definition_name, version: x.definition_version} end)
+|> length
+```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Collect metrics from VM Deployments
+
+The task is to collect some usage metrics from log file of VM Deployment.
+
+```elixir
+csv_file = Path.join([File.cwd!(), "tmp/VM_deployment_Logs_2023_08_10_07_31.csv"])
+File.exists?(csv_file)
+```
+
+Let's take a look what is log file look like:
+
+```elixir
+csv_file
+|> File.stream!()
+|> CSV.decode(separator: ?,, headers: true)
+|> Enum.take(3)
+```
+
+```elixir
+top3_messages =
+  csv_file
+  |> File.stream!()
+  |> CSV.decode(separator: ?,, headers: true)
+  |> Stream.map(fn {:ok, %{"Message" => message}} -> message end)
+  |> Enum.take(3)
+```
+
+```elixir
+example_message = top3_messages |> Enum.at(0)
+```
+
+Use Regex to capture the Caller we needed.
+
+```elixir
+%{"caller" => caller} =
+  Regex.named_captures(~r/Caller: (?<caller>[a-zA-z0-9-]*)/, example_message)
+
+caller
+```
+
+With everything we need, we could parse all log
+
+```elixir
+defmodule VmDeploymentLog do
+  def summary_usage(csv_file) do
+    csv_file
+    |> File.stream!()
+    |> CSV.decode(separator: ?,, headers: true)
+    |> Stream.map(fn {:ok, %{"Message" => message}} -> message end)
+    |> Stream.map(fn message -> parse_caller_from_message(message) end)
+    |> Enum.reduce(%{}, &group_each_caller/2)
+    |> Enum.sort_by(fn {_caller, n} -> n end, :desc)
+  end
+
+  def parse_caller_from_message(message) do
+    %{"caller" => caller} = Regex.named_captures(~r/Caller: (?<caller>[a-zA-z0-9-.]*)/, message)
+    # if caller == "" do
+    #   IO.inspect(message)
+    # end
+    caller
+  end
+
+  def group_each_caller(caller, %{} = acc) do
+    case Map.fetch(acc, caller) do
+      {:ok, counter} ->
+        Map.put(acc, caller, counter + 1)
+
+      :error ->
+        Map.put_new(acc, caller, 1)
+    end
+  end
+end
+```
+
+```elixir
+Path.join([File.cwd!(), "tmp/VM_deployment_Logs_2023_08_10_07_31.csv"])
+|> VmDeploymentLog.summary_usage()
 ```

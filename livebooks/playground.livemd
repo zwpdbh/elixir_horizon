@@ -193,16 +193,97 @@ Aks.module_info()
 ```
 
 ```elixir
-Aks.update_latest_workflows(100)
+Aks.update_latest_workflows(150)
 Aks.list_workflows() |> length
 ```
 
 ```elixir
-Aks.list_aks_workflows_after()
+Aks.list_aks_workflows_after("2023-08-09")
 |> Aks.summary_workflows()
 |> Enum.map(fn x -> %{definition_name: x.definition_name, version: x.definition_version} end)
 |> length
 ```
+
+```elixir
+# Aks.module_info could be used to check exported functions 
+my_aks_clusters =
+  Aks.list_aks_workflows()
+  |> Aks.list_aks_clusters_from_workflows()
+```
+
+```elixir
+target = "ewug5g" |> String.downcase()
+
+my_aks_clusters
+|> Enum.filter(fn x -> x |> String.downcase() |> String.contains?(target) end)
+```
+
+```elixir
+Aks.list_aks_failed_workflows()
+|> Aks.summary_workflows()
+```
+
+```elixir
+Aks.list_aks_workflows_after("2023-08-09")
+|> Aks.summary_workflows()
+|> Enum.filter(fn %{definition_name: x} -> x == "K8sWindowsStaticCsiSnapshotV2" end)
+|> Aks.summary_workflows()
+```
+
+```elixir
+Aks.overwrite_default_k8s_config("6f41938f-2840-4168-9f28-c1b3bfa93cac")
+```
+
+```elixir
+ExecCmd.run("kubectl get pods")
+```
+
+```elixir
+ExecCmd.run("kubectl describe pod xscn-k8s-jfg29a")
+```
+
+```elixir
+# Check the node status (such as os version)
+ExecCmd.run("kubectl get node -o wide")
+```
+
+when you run `kubectl get po -n kube-system`, you're asking Kubernetes to retrieve and display information about all the pods in the kube-system namespace.
+
+```elixir
+# Check csi driver condition
+ExecCmd.run("kubectl get po -n kube-system")
+```
+
+```elixir
+# Check the win related node
+ExecCmd.run("kubectl get po -n kube-system -o wide | grep csi | grep win")
+```
+
+```elixir
+# export the kubeconfig file 
+ExecCmd.run("cp ~/.kube/config /mnt/d/Downloads/K8sWindowsStaticCsiSnapshotV2.config")
+```
+
+#### Common commands to run during troubleshootings
+
+##### Check pod status
+
+kubectl get pods\
+kubectl describe pod <pod-name>
+
+##### Check Pvc status
+
+kubectl get pvc
+
+##### Check csi driver condition
+
+kubectl get po -n kube-system | grep csi
+
+##### Check nodes condition
+
+kubectl get node -o wide
+
+However, we better check nodes status from portal.
 
 <!-- livebook:{"branch_parent_index":0} -->
 

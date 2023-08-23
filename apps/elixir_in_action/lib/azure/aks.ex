@@ -213,7 +213,7 @@ defmodule Azure.Aks do
       TaskSupervisor,
       list_aks_failed_workflows(),
       &cleanup_aks_workflow/1,
-      max_concurrency: 4,
+      max_concurrency: 2,
       timeout: 5_000,
       on_timeout: :kill_task,
       zip_input_on_exit: true
@@ -295,6 +295,7 @@ defmodule Azure.Aks do
   # Suppose we need to operate multiple AKS clusters using kubectl, then we need to specify different kubeconfig for each cluster.
   defp run_kubectl_cmd(kubectl_config_data, command_str) do
     [command | arguments] = command_str |> String.split(" ") |> Enum.filter(fn x -> x != "" end)
+    Logger.debug("run_kubectl_cmd: #{command_str}")
 
     # generate a tmp file for storing the kubectl_config_data
     tmp_config_file = Path.join(System.tmp_dir!(), UUID.uuid1())

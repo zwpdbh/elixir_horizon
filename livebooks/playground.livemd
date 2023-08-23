@@ -193,12 +193,12 @@ Aks.module_info()
 ```
 
 ```elixir
-Aks.update_latest_workflows(150)
+Aks.update_latest_workflows(200)
 Aks.list_workflows() |> length
 ```
 
 ```elixir
-Aks.list_aks_workflows_after("2023-08-09")
+Aks.list_aks_workflows_after("2023-08-21")
 |> Aks.summary_workflows()
 |> Enum.map(fn x -> %{definition_name: x.definition_name, version: x.definition_version} end)
 |> length
@@ -212,7 +212,7 @@ my_aks_clusters =
 ```
 
 ```elixir
-target = "ewug5g" |> String.downcase()
+target = "bq8mb1" |> String.downcase()
 
 my_aks_clusters
 |> Enum.filter(fn x -> x |> String.downcase() |> String.contains?(target) end)
@@ -220,18 +220,12 @@ my_aks_clusters
 
 ```elixir
 Aks.list_aks_failed_workflows()
+|> Aks.filter_workflows_after_date("2023-08-21")
 |> Aks.summary_workflows()
 ```
 
 ```elixir
-Aks.list_aks_workflows_after("2023-08-09")
-|> Aks.summary_workflows()
-|> Enum.filter(fn %{definition_name: x} -> x == "K8sWindowsStaticCsiSnapshotV2" end)
-|> Aks.summary_workflows()
-```
-
-```elixir
-Aks.overwrite_default_k8s_config("6f41938f-2840-4168-9f28-c1b3bfa93cac")
+Aks.overwrite_default_k8s_config("c296aaff-4871-4369-b502-3785c6bb8e12")
 ```
 
 ```elixir
@@ -239,12 +233,12 @@ ExecCmd.run("kubectl get pods")
 ```
 
 ```elixir
-ExecCmd.run("kubectl describe pod xscn-k8s-jfg29a")
+# Check the node status (such as os version)
+ExecCmd.run("kubectl get node -o wide")
 ```
 
 ```elixir
-# Check the node status (such as os version)
-ExecCmd.run("kubectl get node -o wide")
+ExecCmd.run("kubectl describe pod pod-shareddisk-0")
 ```
 
 when you run `kubectl get po -n kube-system`, you're asking Kubernetes to retrieve and display information about all the pods in the kube-system namespace.

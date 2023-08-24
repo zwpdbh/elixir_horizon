@@ -614,6 +614,17 @@ What we need to test in replication rebuild is:
 
 <!-- livebook:{"break_markdown":true} -->
 
+1. Make sure after rebuilding the diskpools' size should be almost same
+   ```
+   zw@zwpdbh:~/download/azstore-add-ons$ kubectl get diskpool -A
+   NAMESPACE   NAME                          CAPACITY         AVAILABLE        USED          RESERVED       READY   AGE
+   acstor      manageddisk1-diskpool-mwoar   10992979238912   10911932907520   81046331392   184052908032   True    87m
+   acstor      manageddisk2-diskpool-fwrfj   10992979238912   10911932907520   81046331392   184052908032   True    87m
+   acstor      manageddisk3-diskpool-nqcwv   10992979238912   10911932907520   81046331392   184052908032   True    87m
+   ```
+
+<!-- livebook:{"break_markdown":true} -->
+
 ### Rebuilding VS Partial Rebuilding
 
 Rebuilding

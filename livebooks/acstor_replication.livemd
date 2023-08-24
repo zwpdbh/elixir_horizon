@@ -9,7 +9,7 @@
 
 <!-- livebook:{"branch_parent_index":0} -->
 
-## Create AKS Cluster
+## 1. Create AKS Cluster
 
 ```elixir
 # Our global settings 
@@ -72,7 +72,7 @@ So far, the created AKS cluster is
 
 <!-- livebook:{"branch_parent_index":0} -->
 
-## Configure AKS Cluster
+## 2. Configure AKS Cluster
 
 To execute kubectl command, we need to get the AKS context by overwrite local kubectl config file.
 
@@ -105,6 +105,19 @@ ExecCmd.run("kubectl get nodes")
 |> ExecCmd.run()
 ```
 
+```elixir
+# show node label 
+"kubectl get nodes --show-labels"
+|> ExecCmd.run()
+```
+
+```elixir
+# to remove lablels "acstor.azure.com/io-engine=acstor"
+# from node with label = "agentpool=nodepool1" 
+"kubectl label nodes --selector agentpool=nodepool1 acstor.azure.com/io-engine-"
+|> ExecCmd.run()
+```
+
 ### Assign contributor role
 
 ```elixir
@@ -131,4 +144,170 @@ node_rg = "MC_acstor-replication-test_acstor-replication-test01_eastus"
 |> ExecCmd.run()
 ```
 
+<!-- livebook:{"branch_parent_index":0} -->
+
+## 3. Install ACStor Addons
+
+[azstor-add-ons](https://dev.azure.com/msazure/One/_git/azstor-add-ons) hosts the main Helm chart for ACStor and additional components added by Microsoft.
+
+First, let's check the prerequisites: 
+AKS nodes where ACStor should run must be labeled with `acstor.azure.com/io-engine=acstor`.
+
+Notice: the kubectl context is inherited from previous section
+
+<!-- livebook:{"break_markdown":true} -->
+
 ###
+
+<!-- livebook:{"break_markdown":true} -->
+
+We need to download the latest add-ons and install it from source code:
+
+```elixir
+download_folder = Path.join(["~/download", "azstore-add-ons"])
+```
+
+```elixir
+"git clone git@ssh.dev.azure.com:v3/msazure/One/azstor-add-ons #{download_folder}"
+|> ExecCmd.run()
+```
+
+```elixir
+# Build add-on
+"""
+cd #{download_folder}/charts/latest/ && 
+helm dependency build
+"""
+|> ExecCmd.run()
+```
+
+```elixir
+
+```
+
+```elixir
+"""
+cd #{download_folder} && 
+helm install acstor charts/latest --namespace acstor --create-namespace \
+--version 0.0.0-latest \
+--set image.tag=latest \
+--set image.registry="azstortest.azurecr.io" \
+--set image.repo="mayadata" \
+--set capacityProvisioner.image.tag=latest \
+--set capacityProvisioner.image.registry="azstortest.azurecr.io"
+"""
+|> ExecCmd.run()
+```
+
+If installation succeed, it should show messages like:
+
+```
+AME: acstor
+LAST DEPLOYED: Thu Aug 24 14:31:45 2023
+NAMESPACE: acstor
+STATUS: deployed
+REVISION: 1
+TEST SUITE: None
+NOTES:
+ACStor has been installed. Check its status by running:
+$ kubectl get pods -n acstor
+```
+
+So, let check it
+
+```elixir
+"kubectl get pods -n acstor"
+|> ExecCmd.run()
+```
+
+## 4. Configure Replication
+
+Notice: the kubectl context is inherited from previous section 2.
+
+<!-- livebook:{"break_markdown":true} -->
+
+Patch the replication images
+
+```elixir
+# All these are hardcoded values
+# Where are those values come from ？？？
+[
+  "kubectl set image deployment/acstor-api-rest api-rest=azstortest.azurecr.io/artifact/424bd44c-13b4-4637-a5a4-0b9506e90413/buddy/rest:47c414cef91d05651985c66d6f3bbe317aab35e0-20230809.5 -n acstor",
+  "kubectl set image deployment/acstor-agent-core agent-core=azstortest.azurecr.io/artifact/424bd44c-13b4-4637-a5a4-0b9506e90413/buddy/agents.core:47c414cef91d05651985c66d6f3bbe317aab35e0-20230809.5 -n acstor ",
+  "kubectl set image deployment/acstor-csi-controller csi-controller=azstortest.azurecr.io/artifact/424bd44c-13b4-4637-a5a4-0b9506e90413/buddy/csi.controller:b7497942a0b4bfaa2f4467ff9132dbb24d110790-20230809.1 -n acstor",
+  "kubectl set image daemonset/acstor-io-engine io-engine=azstortest.azurecr.io/artifact/424bd44c-13b4-4637-a5a4-0b9506e90413/buddy/mayastor-io-engine:6b2a0d7946981ffccefee65698c9f5cb57c19d62-20230801.1 -n acstor"
+]
+|> Enum.each(fn each_cmd -> each_cmd |> ExecCmd.run() end)
+```
+
+Create storage pools
+
+* For Azure disk, create at least 3 storage pools.
+* For NVMe, just create 1 storage pool.
+* For SAN, I haven't tried yet, I guess also at least 3 storage pools are needed.
+
+```elixir
+# Create yaml file and check its content
+"""
+cat<<EOF >~/download/sc.yaml
+apiVersion: storage.k8s.io/v1 
+kind: StorageClass 
+metadata: 
+  name: acstor-replication 
+parameters: 
+  ioTimeout: "60" 
+  protocol: nvmf 
+  repl: "3" 
+  thin: "true" 
+provisioner: containerstorage.csi.azure.com 
+reclaimPolicy: Delete 
+volumeBindingMode: WaitForFirstConsumer 
+EOF
+"""
+|> ExecCmd.run()
+
+"cat ~/download/sc.yaml" |> ExecCmd.run()
+```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Troubleshooting: helm install acstor-addon error
+
+### Troubleshooting
+
+Error: INSTALLATION FAILED: failed post-install: job failed: BackoffLimitExceeded
+
+Solution:
+
+* remove installed helm extension
+* remove acstor namespace
+
+```elixir
+# To make sure extension status
+"helm list -n acstor"
+|> ExecCmd.run()
+```
+
+```elixir
+# To uninstall failed extension
+"helm uninstall acstor -n acstor"
+|> ExecCmd.run()
+```
+
+```elixir
+# Check if there is "acstor" namespace
+"kubectl get namespace -A "
+|> ExecCmd.run()
+```
+
+```elixir
+# Delete "acstor" namespace
+"kubectl delete namespace acstor "
+|> ExecCmd.run()
+```
+
+```elixir
+# Make sure there is no pod in acstor
+"kubectl get pods -n acstor"
+|> ExecCmd.run()
+```

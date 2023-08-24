@@ -21,6 +21,7 @@ region = "eastus"
 
 ```elixir
 # For our repliation test  
+disk_type = "azure_disk"
 rg = "acstor-replication-test"
 aks_cluster = "acstor-replication-test01"
 ```
@@ -44,8 +45,6 @@ ExecCmd.run(
 
 ```elixir
 # Prepare the VM size for node pool
-disk_type = "azure_disk"
-
 vm_sku =
   case disk_type do
     "azure_disk" -> "Standard_D4s_v3"
@@ -220,6 +219,8 @@ So, let check it
 |> ExecCmd.run()
 ```
 
+<!-- livebook:{"branch_parent_index":0} -->
+
 ## 4. Configure Replication
 
 Notice: the kubectl context is inherited from previous section 2.
@@ -240,16 +241,130 @@ Patch the replication images
 |> Enum.each(fn each_cmd -> each_cmd |> ExecCmd.run() end)
 ```
 
+<!-- livebook:{"branch_parent_index":0} -->
+
+## 5. Create Storage Pool
+
 Create storage pools
 
 * For Azure disk, create at least 3 storage pools.
 * For NVMe, just create 1 storage pool.
 * For SAN, I haven't tried yet, I guess also at least 3 storage pools are needed.
 
+**Notice**: please check the `disk_type` value from section 1.
+
 ```elixir
-# Create yaml file and check its content
+disk_type = "azure_disk"
+
+num_storage_pool =
+  case disk_type do
+    "nvme" -> 1
+    "azure_disk" -> 3
+    "san" -> 3
+  end
+```
+
+```elixir
+# generate different yml files for different storage type
+storage_pool_yml_files =
+  case disk_type do
+    "azure_disk" ->
+      1..num_storage_pool
+      |> Enum.to_list()
+      |> Enum.map(fn index ->
+        each_storage_pool_yml = "~/download/azure_disk_storage_pool_#{index}.yaml"
+
+        """
+        cat<<EOF >#{each_storage_pool_yml}
+        apiVersion: containerstorage.azure.com/v1alpha1 
+        kind: StoragePool 
+        metadata: 
+          name: manageddisk#{index} 
+          namespace: acstor 
+        spec: 
+          resources: 
+            requests: 
+              storage: 10Ti 
+          poolType: 
+            azureDisk: {} 
+        EOF
+        """
+        |> ExecCmd.run()
+
+        # reture each yml file 
+        each_storage_pool_yml
+      end)
+
+    "nvme" ->
+      1..num_storage_pool
+      |> Enum.to_list()
+      |> Enum.map(fn index ->
+        each_storage_pool_yml = "~/download/nvme_storage_pool_#{index}.yaml"
+
+        """
+        cat<<EOF >#{each_storage_pool_yml}
+        apiVersion: containerstorage.azure.com/v1alpha1 
+        kind: StoragePool 
+        metadata: 
+          name: ephemeraldisk#{index}  
+          namespace: acstor 
+        spec: 
+          poolType: 
+            ephemeralDisk: {} 
+        EOF
+        """
+        |> ExecCmd.run()
+
+        # reture each yml file 
+        each_storage_pool_yml
+      end)
+
+    "san" ->
+      1..num_storage_pool
+      |> Enum.to_list()
+      |> Enum.map(fn index ->
+        each_storage_pool_yml = "~/download/san_storage_pool_#{index}.yaml"
+
+        """
+        cat<<EOF >#{each_storage_pool_yml}
+        apiVersion: containerstorage.azure.com/v1alpha1 
+        kind: StoragePool 
+        metadata: 
+          name: acstor-managed#{index} 
+          namespace: acstor 
+        spec: 
+          poolType: 
+            san: {} 
+        resources: 
+          limits: {"storage": 15Ti} 
+          requests: {"storage": 1Ti}  
+        EOF
+        """
+        |> ExecCmd.run()
+
+        # reture each yml file 
+        each_storage_pool_yml
+      end)
+  end
+```
+
+```elixir
+# Create storage pool from storage_pool_yml_files
+storage_pool_yml_files
+|> Enum.each(fn each_yaml ->
+  "kubectl apply -f  #{each_yaml}" |> ExecCmd.run()
+end)
+```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## 6. Create Storage Class
+
+```elixir
+storage_class_yaml = "~/download/storage_class.yaml"
+
 """
-cat<<EOF >~/download/sc.yaml
+cat<<EOF >#{storage_class_yaml}
 apiVersion: storage.k8s.io/v1 
 kind: StorageClass 
 metadata: 
@@ -265,9 +380,259 @@ volumeBindingMode: WaitForFirstConsumer
 EOF
 """
 |> ExecCmd.run()
-
-"cat ~/download/sc.yaml" |> ExecCmd.run()
 ```
+
+```elixir
+"kubectl apply -f  #{storage_class_yaml}" |> ExecCmd.run()
+```
+
+## 7. Create PVC
+
+Create PVC(s) with storage class `acstor-replication`
+Change the `name` and `storage` (size) as needed
+
+```elixir
+pvc_name = "pv-00-000"
+storage_size = "100Gi"
+```
+
+```elixir
+pvc_yaml = "~/download/pvc.yaml"
+
+"""
+cat<<EOF >#{pvc_yaml}
+apiVersion: v1 
+kind: PersistentVolumeClaim 
+metadata: 
+  name: #{pvc_name}
+spec: 
+  accessModes: 
+  - ReadWriteOnce 
+  resources: 
+    requests: 
+      storage: #{storage_size} 
+  storageClassName: acstor-replication  
+EOF
+"""
+|> ExecCmd.run()
+```
+
+```elixir
+"kubectl apply -f  #{pvc_yaml}" |> ExecCmd.run()
+```
+
+```elixir
+# Check created PVC 
+"kubectl get pvc -o wide"
+|> ExecCmd.run()
+```
+
+After creation, the pvc is in `pending` status. We need to create a pod to consume it.
+
+## 8. Create Pod
+
+To create pod on specific node, we need to label those node first.
+
+```elixir
+# 1. get the node names related with "storagepool"
+"kubectl get nodes | grep storagepool"
+|> ExecCmd.run()
+```
+
+```elixir
+# 2. Label the nodes "targetNode=xxx"
+[
+  "aks-storagepool-17429370-vmss000000",
+  "aks-storagepool-17429370-vmss000001",
+  "aks-storagepool-17429370-vmss000002"
+]
+|> Enum.with_index()
+|> Enum.each(fn {each_node, i} ->
+  "kubectl label nodes #{each_node} targetNode=node#{i}"
+  |> ExecCmd.run()
+end)
+```
+
+```elixir
+# Check labeled node 
+"kubectl get node --show-labels | grep targetNode"
+|> ExecCmd.run()
+```
+
+```elixir
+# Firnall, create pod on specific node
+# from previous steps in this section
+target_node = "node0"
+# custom
+pod_name = "test-pod-00-000"
+# from section 7.
+pvc_name = "pv-00-000"
+
+pod_yaml = "~/download/pod.yaml"
+
+"""
+cat<<EOF >#{pod_yaml}
+kind: Pod 
+apiVersion: v1 
+metadata: 
+  name: #{pod_name} 
+spec: 
+  volumes: 
+    - name: ms-volume 
+      persistentVolumeClaim: 
+        claimName: #{pvc_name} 
+  containers: 
+    - name: #{pod_name} 
+      image: acrldi.azurecr.io/acstor-test 
+      args: 
+        - sleep 
+        - "1000000" 
+      volumeMounts: 
+        - mountPath: "/volume" 
+          name: ms-volume 
+  nodeSelector: 
+    targetNode: "#{target_node}"   
+EOF
+"""
+|> ExecCmd.run()
+```
+
+```elixir
+"kubectl apply -f  #{pod_yaml}" |> ExecCmd.run()
+```
+
+```elixir
+# check pod to make sure it is in Running status
+"kubectl get pods -o wide"
+|> ExecCmd.run()
+```
+
+## 9. Run Fio workload
+
+```elixir
+"""
+kubectl exec -it #{pod_name} -- fio \
+--name=benchtest --size=2g \
+--filename=/volume/test \
+--direct=1 --rw=randrw --rwmixread=30 \
+--ioengine=libaio --bs=4k --iodepth=8 \
+--numjobs=1 --time_based \
+--runtime=60 \
+--verify_backlog=4096 \
+--serialize_overlap=1 \
+--do_verify=1 \
+--verify=crc32 --group_reporting
+"""
+|> ExecCmd.run()
+```
+
+For each node, there is a corresponding io-engine pod.
+
+```elixir
+# After the workload finished, we could check the replication
+"kubectl get pod -n acstor | grep io-engine " |> ExecCmd.run()
+```
+
+We need to verify the md5's value are the same across those io-engine. \
+Just check them one by one for each io-engine from real terminal because we need to login to it to calculate the md5 values for each volumn.
+
+```
+$ kubectl exec -it acstor-io-engine-6dnql -n acstor -c io-engine -- sh
+sh-5.1# ls -lht /xfs-disk-pool/csi-7zjkf/be3adf14-e030-438a-9067-342366581c97
+-rw-r--r-- 1 root root 100G Aug 24 08:24 /xfs-disk-pool/csi-7zjkf/be3adf14-e030-438a-9067-342366581c97
+sh-5.1# ls -lht /xfs-disk-pool/csi-7zjkf/
+total 4.1G
+-rw-r--r-- 1 root root 100G Aug 24 08:24 be3adf14-e030-438a-9067-342366581c97
+sh-5.1# md5sum /xfs-disk-pool/csi-7zjkf/*
+65bc81823676e57a871278e08574e470  /xfs-disk-pool/csi-7zjkf/be3adf14-e030-438a-9067-342366581c97
+```
+
+<!-- livebook:{"break_markdown":true} -->
+
+The purpose of this is make sure all md5 values of each volumes for different io-engines are all the same.
+
+## 10. Replication Rebuild
+
+So far, within a AKS cluster
+
+* Created multiple nodes
+
+* Label those nodes with tag: `acstor.azure.com/io-engine=acstor`
+
+* Those labeled nodes will make acstor extension to create special pods checked by:
+
+  ```
+    kubectl get pod -n acstor | grep io-engine 
+  ```
+
+  * Each io-engine is a running application in pod with special name.
+
+  That's why we need to first add node pool and label the nodes before we install acstor-extension.
+
+<!-- livebook:{"break_markdown":true} -->
+
+What we need to test in replication rebuild is:
+
+* Remove the `acstor.azure.com/io-engine=acstor` from some node. 
+  The purpose of this is to simualte incident in io-engine.
+* Then, re-add the label back to the node.
+* At last, we check the rebuilding 
+  * Rebuilding means the volumes in some io-engine, such as `acstor-io-engine-6dnql` should be recovered.
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Rebuilding steps
+
+<!-- livebook:{"break_markdown":true} -->
+
+1. Delete io-engine pod by unlabel one of the node.
+
+**Notice**
+
+* We need to unable the node which there is no user pod created on it.
+* For instance, the fio application is created on node0, we should **NOT**  unlable this node.
+
+<!-- livebook:{"break_markdown":true} -->
+
+1. Verify the one of the io-engine is removed 
+   ```
+   kubectl get pod -n acstor | grep io-engine
+   ```
+
+<!-- livebook:{"break_markdown":true} -->
+
+1. Add label back `acstor.azure.com/io-engine=acstor` to the node.
+
+**Notice**
+
+* Based on the interval of time between relabel, there is `Rebuilding` and `Partial Rebuilding`
+* This doesn't afffect how to test rebuilding or how to verify its result. But it has differences
+
+<!-- livebook:{"break_markdown":true} -->
+
+1. Wait rebulding finished then check MD5
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Rebuilding VS Partial Rebuilding
+
+Rebuilding
+
+* Rebuilding on a single io-engine
+* Rebuilding on multiple (e.g. 2) io-engines in parallel (a cluster with 4 or more nodes is needed)
+* Bring down all nodes except the nexus node, then bring them up, delete pods/PVs, create pods/PVs
+
+Partial rebuilding
+
+* Partial rebuilding on a single io-engine
+* Partial rebuilding on a single io-engine for multiple times
+* Partial rebuilding on multiple (e.g. 2) io-engines in parallel (a cluster with 4 or more nodes is needed)
+
+<!-- livebook:{"break_markdown":true} -->
+
+Other notes:
+
+* The finish of rebuilding is indicated by `state: Online`.
 
 <!-- livebook:{"branch_parent_index":0} -->
 
@@ -307,7 +672,7 @@ Solution:
 ```
 
 ```elixir
-# Make sure there is no pod in acstor
+# Make sure there is no pod in acstor namespace
 "kubectl get pods -n acstor"
 |> ExecCmd.run()
 ```

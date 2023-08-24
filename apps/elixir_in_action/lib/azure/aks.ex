@@ -7,6 +7,8 @@ defmodule Azure.Aks do
   alias Azure.AuthAgent
   alias Http.RestClient
   alias Azure.Aks.TaskSupervisor
+  alias Azure.AuthAgent.AuthToken
+
   require Logger
 
   @uri "https://xscnworkflowconsole.eastus.cloudapp.azure.com"
@@ -316,5 +318,31 @@ defmodule Azure.Aks do
 
   def test_run_kubectl_cmd_for_id() do
     run_kubectl_cmd_for_id("77748486-b3ec-4468-a81b-2145276a0c6d", "kubectl get nodes")
+  end
+
+  def get_aks_config(%{subscription_id: sub_id, rg: rg_name, aks: aks_name}) do
+    # Need to get the Aks configuration from created cluster
+    %AuthToken{expires_at: _, access_token: access_token} =
+      AuthAgent.get_auth_token(AuthAgent.azure_scope())
+
+    headers =
+      RestClient.add_header("Content-type", "application/json")
+      |> RestClient.add_header("Authorization", "Bearer #{access_token}")
+
+    query_options = RestClient.add_query("api-version", "2023-01-01")
+
+    # POST https://management.azure.com/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.ContainerService/managedClusters/{resourceName}/listClusterAdminCredential
+    url =
+      "https://management.azure.com/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/providers/Microsoft.ContainerService/managedClusters/#{aks_name}/listClusterAdminCredential"
+
+    {:ok, %HTTPoison.Response{status_code: 200, body: response_body}} =
+      RestClient.post_request(url, %{}, headers, query_options)
+
+    response_body
+    |> Jason.decode!()
+    |> Map.get("kubeconfigs")
+    |> List.first()
+    |> Map.get("value")
+    |> Base.decode64!()
   end
 end

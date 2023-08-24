@@ -98,3 +98,37 @@ File.write("/home/zw/.kube/config", k8s_config)
 # Test k8s context by checking the nodes in AKS cluster
 ExecCmd.run("kubectl get nodes")
 ```
+
+```elixir
+# Label the nodes 
+"kubectl label nodes --selector agentpool=storagepool acstor.azure.com/io-engine=acstor"
+|> ExecCmd.run()
+```
+
+### Assign contributor role
+
+```elixir
+# Check the managed id 
+"az aks show -g #{aks_settings.rg} -n #{aks_settings.aks} --out tsv --query identityProfile.kubeletidentity.objectId"
+|> ExecCmd.run()
+```
+
+```elixir
+# check the node resource group 
+"az aks show -g #{aks_settings.rg} -n #{aks_settings.aks} --out tsv --query nodeResourceGroup"
+|> ExecCmd.run()
+```
+
+```elixir
+# Obtained from previous 2 steps as ExecCmd's output to terminal
+managed_id = "c84af941-c89e-4256-b871-861449a8fc39"
+node_rg = "MC_acstor-replication-test_acstor-replication-test01_eastus"
+```
+
+```elixir
+# Finally, assign the contributor role
+"az role assignment create --assignee #{managed_id} --role Contributor --scope /subscriptions/#{aks_settings.subscription_id}/resourceGroups/#{node_rg}"
+|> ExecCmd.run()
+```
+
+###

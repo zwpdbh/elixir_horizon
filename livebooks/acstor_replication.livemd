@@ -1,0 +1,100 @@
+# ACStor Replication
+
+## Introduction
+
+### References
+
+* [Steps of replication](https://microsoft.sharepoint.com/teams/AzureStorage/Scenarios/_layouts/15/Doc.aspx?sourcedoc={2fa64dce-8dcf-4568-8d77-2c3c6b5516bf}&action=edit&wd=target%28Storage%20Features%2FGeneral%2FContainer%20and%20AKS.one%7Cfea4ea3b-64a2-4629-a7ad-c7003b84b71f%2FSteps%7C71d3e2c7-541a-4a17-83c4-275279f3ee3c%2F%29&wdorigin=NavigationUrl)
+* [How to rebuild](https://microsoft.sharepoint.com/teams/AzureStorage/Scenarios/_layouts/15/Doc.aspx?sourcedoc={2fa64dce-8dcf-4568-8d77-2c3c6b5516bf}&action=edit&wd=target%28Storage%20Features%2FGeneral%2FContainer%20and%20AKS.one%7Cfea4ea3b-64a2-4629-a7ad-c7003b84b71f%2FRebuild%7C531e371e-20dd-4216-bb10-65f9a5638bda%2F%29&wdorigin=NavigationUrl)
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Create AKS Cluster
+
+```elixir
+# Our global settings 
+# subscription has no particular
+subscription = "65490f91-f2c2-4514-80ba-4ec1de89aeda"
+# region has no particular
+region = "eastus"
+```
+
+```elixir
+# For our repliation test  
+rg = "acstor-replication-test"
+aks_cluster = "acstor-replication-test01"
+```
+
+```elixir
+# Set Azure subscription
+ExecCmd.run("az account set --subscription #{subscription}")
+```
+
+```elixir
+# Create resource group on Azure
+ExecCmd.run("az group create  --location #{region} --name #{rg}")
+```
+
+```elixir
+# Create AKS cluster
+ExecCmd.run(
+  "az aks create -n #{aks_cluster} -g #{rg} --generate-ssh-keys --attach-acr /subscriptions/d64ddb0c-7399-4529-a2b6-037b33265372/resourceGroups/azstor-test-rg/providers/Microsoft.ContainerRegistry/registries/azstortest"
+)
+```
+
+```elixir
+# Prepare the VM size for node pool
+disk_type = "azure_disk"
+
+vm_sku =
+  case disk_type do
+    "azure_disk" -> "Standard_D4s_v3"
+    "nvme" -> "Standard_L8s_v3"
+  end
+```
+
+```elixir
+# Add node pool with 3 nodes 
+"az aks nodepool add --cluster-name #{aks_cluster} --name storagepool --resource-group #{rg} --node-vm-size #{vm_sku} --node-count 3 "
+|> ExecCmd.run()
+```
+
+So far, the created AKS cluster is
+
+```elixir
+%{
+  subscription_id: subscription,
+  region: region,
+  rg: rg,
+  aks: aks_cluster
+}
+```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Configure AKS Cluster
+
+To execute kubectl command, we need to get the AKS context by overwrite local kubectl config file.
+
+```elixir
+aks_settings = %{
+  aks: "acstor-replication-test01",
+  region: "eastus",
+  rg: "acstor-replication-test",
+  subscription_id: "65490f91-f2c2-4514-80ba-4ec1de89aeda"
+}
+```
+
+```elixir
+alias Azure.Aks
+k8s_config = Aks.get_aks_config(aks_settings)
+```
+
+```elixir
+File.write("/home/zw/.kube/config", k8s_config)
+```
+
+```elixir
+# Test k8s context by checking the nodes in AKS cluster
+ExecCmd.run("kubectl get nodes")
+```

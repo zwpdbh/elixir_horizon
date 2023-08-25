@@ -25,13 +25,12 @@ iex(elixir_horizion@localhost)1> Node.self
 
 ```sh
 docker run \
+--network=host \
 -e LIVEBOOK_DISTRIBUTION=name \
 -e LIVEBOOK_COOKIE=some_token \
 -e LIVEBOOK_NODE=livebook@localhost \
 -e LIVEBOOK_PORT=8007 \
 -e LIVEBOOK_IFRAME_PORT=8008 \
--p 8007:8007 \
--p 8008:8008 \
 -u $(id -u):$(id -g) \
 -v $(pwd):/data \
 ghcr.io/livebook-dev/livebook:0.8.1

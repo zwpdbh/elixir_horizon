@@ -30,12 +30,7 @@ Attach remote elixir_horizon node as:
 
 <!-- livebook:{"break_markdown":true} -->
 
-Test code
-
-```elixir
-alias Azure.Aks
-Aks.module_info()
-```
+Let's test some code from next section.
 
 <!-- livebook:{"branch_parent_index":0} -->
 
@@ -49,7 +44,7 @@ Aks.module_info()
 Fetch the lates 200 workflows
 
 ```elixir
-Aks.update_latest_workflows(200)
+Aks.update_latest_workflows(100)
 Aks.list_workflows() |> length
 ```
 
@@ -66,8 +61,19 @@ defmodule Nsp do
     end)
   end
 
+  def filter_finished_workflows(workflows) do
+    workflows
+    |> Enum.filter(fn x -> x.status != "Runnable" end)
+  end
+
   def summary_from_workflow_detail(
-        %{"data" => data_str, "definitionName" => definition_name, "id" => id} = _workflow
+        %{
+          "data" => data_str,
+          "definitionName" => definition_name,
+          "id" => id,
+          "status" => status,
+          "createTime" => create_time_str
+        } = workflow
       ) do
     %{
       "DeploymentName" => deployment_name,
@@ -80,12 +86,21 @@ defmodule Nsp do
       id: id,
       definition_name: definition_name,
       deployment_name: deployment_name,
-      tenant_name: tenant_name
+      tenant_name: tenant_name,
+      status: status,
+      create_time: How.Snippets.ConvertTime.get_datetime_in_shanghai_from_str(create_time_str)
     }
 
     special_parameters = data_json |> process_different_scte_deployment_name
 
-    Map.merge(common_parameters, special_parameters)
+    completion_time_str = Map.get(workflow, "completeTime", nil)
+
+    completion_in_shanghai =
+      How.Snippets.ConvertTime.get_datetime_in_shanghai_from_str(completion_time_str)
+
+    common_parameters
+    |> Map.merge(special_parameters)
+    |> Map.merge(%{complete_time: completion_in_shanghai})
   end
 
   def summary_nsp_workflows(workflows) do
@@ -94,25 +109,50 @@ defmodule Nsp do
   end
 
   def process_different_scte_deployment_name(
-        %{"ScteDeploymentName" => scte_deployment_name} = _data_json
+        %{
+          "ScteDeploymentName" => scte_deployment_name,
+          "ScenarioId" => scte_id
+        } = _data_json
       ) do
-    %{scte_deployment_name: scte_deployment_name}
+    %{scte_deployment_name: scte_deployment_name, scte_deployment: scte_id}
+  end
+
+  def process_different_scte_deployment_name(
+        %{
+          "DeploymentName" => scte_deployment_name,
+          "ScenarioId" => scte_id
+        } = _data_json
+      ) do
+    %{deployment_name_from_data: scte_deployment_name, scte_deployment: scte_id}
   end
 
   def process_different_scte_deployment_name(
         %{
           "ScteDeploymentNameDst" => scte_deployment_name_dst,
-          "ScteDeploymentNameSrc" => scte_deployment_name_src
+          "ScteDeploymentNameSrc" => scte_deployment_name_src,
+          "ScenarioIdDst" => scte_dst_id,
+          "ScenarioIdSrc" => scte_src_id
         } = _data_json
       ) do
     %{
       scte_deployment_name_dst: scte_deployment_name_dst,
-      scte_deployment_name_src: scte_deployment_name_src
+      scte_deployment_name_src: scte_deployment_name_src,
+      scte_deployment_dst: scte_dst_id,
+      scte_deployment_src: scte_src_id
     }
   end
 
-  def process_different_scte_deployment_name(data_json) do
-    data_json
+  def filter_nsp_copy_workloads(workloads) do
+    workloads
+    |> Enum.filter(fn x -> filter_nsp_copy_workload(x) end)
+  end
+
+  defp filter_nsp_copy_workload(%{scte_deployment_name_dst: _some} = workload) do
+    workload
+  end
+
+  defp filter_nsp_copy_workload(%{} = _workload) do
+    nil
   end
 end
 ```
@@ -134,4 +174,188 @@ data_str |> Jason.decode!()
 ```elixir
 top3
 |> Nsp.summary_nsp_workflows()
+```
+
+```elixir
+Aks.list_workflows()
+|> Nsp.filter_nsp_related_workflows()
+|> Nsp.summary_nsp_workflows()
+|> Nsp.filter_nsp_copy_workloads()
+```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## AKS workflows
+
+```elixir
+alias Azure.Aks
+Aks.module_info()
+```
+
+```elixir
+Aks.update_latest_workflows(200)
+Aks.list_workflows() |> length
+```
+
+```elixir
+Aks.list_aks_workflows_after("2023-08-21")
+|> Aks.summary_workflows()
+|> Enum.map(fn x -> %{definition_name: x.definition_name, version: x.definition_version} end)
+|> length
+```
+
+```elixir
+# Aks.module_info could be used to check exported functions 
+my_aks_clusters =
+  Aks.list_aks_workflows()
+  |> Aks.list_aks_clusters_from_workflows()
+```
+
+```elixir
+target = "bq8mb1" |> String.downcase()
+
+my_aks_clusters
+|> Enum.filter(fn x -> x |> String.downcase() |> String.contains?(target) end)
+```
+
+```elixir
+Aks.list_aks_failed_workflows()
+|> Aks.filter_workflows_after_date("2023-08-21")
+|> Aks.summary_workflows()
+```
+
+```elixir
+Aks.overwrite_default_k8s_config("c296aaff-4871-4369-b502-3785c6bb8e12")
+```
+
+```elixir
+ExecCmd.run("kubectl get pods")
+```
+
+```elixir
+# Check the node status (such as os version)
+ExecCmd.run("kubectl get node -o wide")
+```
+
+```elixir
+ExecCmd.run("kubectl describe pod pod-shareddisk-0")
+```
+
+when you run `kubectl get po -n kube-system`, you're asking Kubernetes to retrieve and display information about all the pods in the kube-system namespace.
+
+```elixir
+# Check csi driver condition
+ExecCmd.run("kubectl get po -n kube-system")
+```
+
+```elixir
+# Check the win related node
+ExecCmd.run("kubectl get po -n kube-system -o wide | grep csi | grep win")
+```
+
+```elixir
+# export the kubeconfig file 
+ExecCmd.run("cp ~/.kube/config /mnt/d/Downloads/K8sWindowsStaticCsiSnapshotV2.config")
+```
+
+#### Common commands to run during troubleshootings
+
+##### Check pod status
+
+kubectl get pods\
+kubectl describe pod <pod-name>
+
+##### Check Pvc status
+
+kubectl get pvc
+
+##### Check csi driver condition
+
+kubectl get po -n kube-system | grep csi
+
+##### Check nodes condition
+
+kubectl get node -o wide
+
+However, we better check nodes status from portal.
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Collect metrics from VM Deployments
+
+The task is to collect some usage metrics from log file of VM Deployment.
+
+```elixir
+csv_file = Path.join([File.cwd!(), "tmp/VM_deployment_Logs_2023_08_10_07_31.csv"])
+File.exists?(csv_file)
+```
+
+Let's take a look what is log file look like:
+
+```elixir
+csv_file
+|> File.stream!()
+|> CSV.decode(separator: ?,, headers: true)
+|> Enum.take(3)
+```
+
+```elixir
+top3_messages =
+  csv_file
+  |> File.stream!()
+  |> CSV.decode(separator: ?,, headers: true)
+  |> Stream.map(fn {:ok, %{"Message" => message}} -> message end)
+  |> Enum.take(3)
+```
+
+```elixir
+example_message = top3_messages |> Enum.at(0)
+```
+
+Use Regex to capture the Caller we needed.
+
+```elixir
+%{"caller" => caller} =
+  Regex.named_captures(~r/Caller: (?<caller>[a-zA-z0-9-]*)/, example_message)
+
+caller
+```
+
+With everything we need, we could parse all log
+
+```elixir
+defmodule VmDeploymentLog do
+  def summary_usage(csv_file) do
+    csv_file
+    |> File.stream!()
+    |> CSV.decode(separator: ?,, headers: true)
+    |> Stream.map(fn {:ok, %{"Message" => message}} -> message end)
+    |> Stream.map(fn message -> parse_caller_from_message(message) end)
+    |> Enum.reduce(%{}, &group_each_caller/2)
+    |> Enum.sort_by(fn {_caller, n} -> n end, :desc)
+  end
+
+  def parse_caller_from_message(message) do
+    %{"caller" => caller} = Regex.named_captures(~r/Caller: (?<caller>[a-zA-z0-9-.]*)/, message)
+    # if caller == "" do
+    #   IO.inspect(message)
+    # end
+    caller
+  end
+
+  def group_each_caller(caller, %{} = acc) do
+    case Map.fetch(acc, caller) do
+      {:ok, counter} ->
+        Map.put(acc, caller, counter + 1)
+
+      :error ->
+        Map.put_new(acc, caller, 1)
+    end
+  end
+end
+```
+
+```elixir
+Path.join([File.cwd!(), "tmp/VM_deployment_Logs_2023_08_10_07_31.csv"])
+|> VmDeploymentLog.summary_usage()
 ```

@@ -521,7 +521,7 @@ children_specs = for n <- [10000, 20000, 30000], do: Supervisor.child_spec({Coun
 
 ```elixir
 second_sup_spec = %{
-  id: :crafted_sup,
+  id: CraftSub,
   start: {Supervisor, :start_link, [children_specs, [strategy: :one_for_one]]},
   type: :supervisor,
   restart: :permanent,
@@ -544,3 +544,289 @@ Kino.Process.render_sup_tree(MyApp.SupervisorV2)
 <!-- livebook:{"branch_parent_index":0} -->
 
 ## 2.2 Examples of Custom Supervisor Usage
+
+### Stop all Counter instances by stop their supervisor
+
+Consider a situation in which we want to stop all stoped `Counter` instance.
+
+We could do this by stop their supervisor.
+
+```elixir
+defmodule CounterV5 do
+  use GenServer
+  require Logger
+
+  @interval 100
+
+  def start_link(start_from, opts \\ []) do
+    GenServer.start_link(__MODULE__, start_from, opts)
+  end
+
+  def get(pid) do
+    GenServer.call(pid, :get)
+  end
+
+  def init(start_from) do
+    # Updated here
+    Process.flag(:trap_exit, true)
+
+    st = %{
+      current: start_from,
+      timer: :erlang.start_timer(@interval, self(), :tick)
+    }
+
+    {:ok, st}
+  end
+
+  def handle_call(:get, _from, st) do
+    {:reply, st.current, st}
+  end
+
+  def handle_info({:timeout, _timer_ref, :tick}, st) do
+    new_timer = :erlang.start_timer(@interval, self(), :tick)
+    :erlang.cancel_timer(st.timer)
+
+    {:noreply, %{st | current: st.current + 1, timer: new_timer}}
+  end
+
+  # Updated here
+  def terminate(reason, st) do
+    Logger.info("terminating with #{inspect(reason)}, counter is #{st.current}")
+  end
+end
+```
+
+```elixir
+defmodule CounterSupV2 do
+  use Supervisor
+
+  def start_link(start_numbers) do
+    Supervisor.start_link(__MODULE__, start_numbers, name: __MODULE__)
+  end
+
+  @impl true
+  def init(start_numbers) do
+    children =
+      for start_number <- start_numbers do
+        # We can't just use `{OurNewApp.Counter, start_number}`
+        # because we need different ids for children
+
+        Supervisor.child_spec({CounterV5, start_number}, id: start_number)
+      end
+
+    Supervisor.init(children, strategy: :one_for_one)
+  end
+end
+```
+
+```elixir
+children = [
+  {CounterSupV2, [10000, 20000]}
+]
+
+opts = [strategy: :one_for_one, name: MyApp.SupervisorV3]
+Supervisor.start_link(children, opts)
+```
+
+```elixir
+Kino.Process.render_sup_tree(MyApp.SupervisorV3)
+```
+
+```elixir
+Supervisor.stop(MyApp.SupervisorV3, :normal)
+```
+
+### How to stop all Counters gracefully.
+
+The condition of gracefulness is to count up until we reach numbers divisible by 10 (10, 20, 30, etc) before shutdown.
+
+Of course, in our simple example, we may just send ticks to count to the nearest number divisible by 10 in terminate. \
+Instead, imagine that these events are external end emulate some metrics that we would prefer to aggregate consistently.
+
+To achieve that, we need to do the following modification.
+
+```elixir
+defmodule CounterV6 do
+  use GenServer
+  require Logger
+
+  @interval 100
+
+  def start_link(start_from) do
+    GenServer.start_link(__MODULE__, start_from)
+  end
+
+  def get(pid) do
+    GenServer.call(pid, :get)
+  end
+
+  def stop_gracefully(pid) do
+    GenServer.call(pid, :stop_gracefully)
+  end
+
+  def init(start_from) do
+    Process.flag(:trap_exit, true)
+
+    st = %{
+      current: start_from,
+      timer: :erlang.start_timer(@interval, self(), :tick),
+      terminator: nil
+    }
+
+    {:ok, st}
+  end
+
+  def handle_call(:get, _from, st) do
+    {:reply, st.current, st}
+  end
+
+  def handle_call(:stop_gracefully, from, st) do
+    if st.terminator do
+      {:reply, :already_stopping, st}
+    else
+      {:noreply, %{st | terminator: from}}
+    end
+  end
+
+  def handle_info({:timeout, _timer_ref, :tick}, st) do
+    :erlang.cancel_timer(st.timer)
+
+    new_current = st.current + 1
+
+    if st.terminator && rem(new_current, 10) == 0 do
+      # we are terminating
+      GenServer.reply(st.terminator, :ok)
+      {:stop, :normal, %{st | current: new_current, timer: nil}}
+    else
+      new_timer = :erlang.start_timer(@interval, self(), :tick)
+      {:noreply, %{st | current: new_current, timer: new_timer}}
+    end
+  end
+
+  def terminate(reason, st) do
+    Logger.info("terminating with #{inspect(reason)}, counter is #{st.current}")
+  end
+end
+```
+
+Let's test if it works for a single process.
+
+```elixir
+{:ok, pid} = CounterV6.start_link(10000)
+```
+
+```elixir
+CounterV6.stop_gracefully(pid)
+```
+
+After confirm the Counter module could stop gracefull, let's modify supervisor to make it work with our Counter's new feature.
+
+<!-- livebook:{"break_markdown":true} -->
+
+#### In elixir, the application has "prep_stop", what is the similar callback for supervisor?
+
+The `prep_stop` callback is used in applications to perform graceful termination before the application shuts down. Supervisors, on the other hand, don't have a built-in callback specifically for this purpose.
+
+When a supervisor is stopped, either due to an error or a clean shutdown, it will stop all its child processes as well. This behavior is based on the linked supervision tree where a supervisor is linked to its child processes, and if a supervisor terminates, its children will also be terminated.
+
+If you need to perform some cleanup or graceful termination logic for a supervised process before it is stopped, you can define your own termination function within the supervised process itself. When the process receives a termination signal (e.g., via `Process.exit/2`), it can handle the termination and perform any necessary cleanup before exiting.
+
+How to define custom termination function see above usage of `terminate/2`.
+
+Please note that if you have child supervisors within your main supervisor, they will also follow the same linked supervision model, and their children will be terminated in a similar way. Therefore, you can implement custom termination logic within individual processes or child supervisors as needed.
+
+<!-- livebook:{"break_markdown":true} -->
+
+This means, we have to create reall application for testing.  \
+The supervisor module has no different from previous example except a new name.
+
+```elixir
+defmodule CounterSupV4 do
+  use Supervisor
+
+  def start_link(start_numbers) do
+    Supervisor.start_link(__MODULE__, start_numbers, name: __MODULE__)
+  end
+
+  @impl true
+  def init(start_numbers) do
+    children =
+      for start_number <- start_numbers do
+        # We can't just use `{OurNewApp.Counter, start_number}`
+        # because we need different ids for children
+
+        Supervisor.child_spec(
+          {CounterV6, start_number},
+          id: start_number,
+          restart: :transient
+        )
+      end
+
+    Supervisor.init(children, strategy: :one_for_one)
+  end
+end
+```
+
+However, the below application callback module could not be tested by executing Livebook. \
+We need to either modify our existing application or create a new one to test.
+
+```elixir
+defmodule App do
+  use Application
+
+  @impl true
+  def start(_type, _args) do
+    # Defines the children we need to start. Here, when App start, we want to start CounterSupV4
+    children = [
+      {CounterSupV4, [10000, 20000]}
+    ]
+
+    opts = [strategy: :one_for_one, name: MyCounterAppSupervisor]
+    Supervisor.start_link(children, opts)
+  end
+
+  @impl true
+  def prep_stop(st) do
+    stop_tasks =
+      for {_, pid, _, _} <- Supervisor.which_children(CounterSupV4) do
+        Task.async(fn ->
+          :ok = CounterV6.stop_gracefully(pid)
+        end)
+      end
+
+    Task.await_many(stop_tasks)
+    st
+  end
+end
+```
+
+### Recap steps to add a supervisor to an application.
+
+* In your application's `mix.exs` file define the callback module to use, such as
+
+  ```elixir
+  def application do
+    [
+      extra_applications: [:logger],
+      mod: {App, []}
+    ]
+  end
+  ```
+
+* In your application callback module, the application callback's job is to start a supervision tree.
+
+  * Define `use Application`
+  * Define which supervisor you want to start by implementing the `start/2`.
+
+* Make sure the supervisors are configed properly. We could start a supervisor in two ways:
+
+  * Use `Supervisor.start_link`, with `children` and `opts`.
+  * Call supervisor's `start_link` directly.
+
+More details check [the application call back](https://elixir-lang.org/getting-started/mix-otp/supervisor-and-application.html#the-application-callback).
+
+## Part 3: Application Code Upgrades in Elixir
+
+From [Application Code Upgrades in Elixir](https://blog.appsignal.com/2021/09/14/application-code-upgrades-in-elixir.html)
+
+Must also read through this: [Lear you some Erlang -- Leveling Up in The Process Quest](https://learnyousomeerlang.com/relups)

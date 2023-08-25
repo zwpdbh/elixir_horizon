@@ -91,6 +91,16 @@ defmodule Http.RestClient do
     HTTPoison.get(uri)
   end
 
+  def post_request(uri, %{} = body_map, %{} = header_map, %{} = query_map) do
+    query_str = query_map |> encode_query_map_to_uri()
+
+    HTTPoison.post(
+      uri <> "?" <> query_str,
+      encode_map_to_json(body_map),
+      map_to_tuple_list(header_map)
+    )
+  end
+
   # Special case for Azure: we need to pass the body information as "form-data".
   # Therefore, we need to handle it differently when we encounter heander type:
   # "Content-type" => "application/x-www-form-urlencoded"

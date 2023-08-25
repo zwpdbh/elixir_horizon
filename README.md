@@ -26,9 +26,12 @@ iex(elixir_horizion@localhost)1> Node.self
 ```sh
 docker run \
 --network=host \
+-e RELEASE_NODE=elixir_horizion \
 -e LIVEBOOK_DISTRIBUTION=name \
 -e LIVEBOOK_COOKIE=some_token \
 -e LIVEBOOK_NODE=livebook@localhost \
+-e LIVEBOOK_PORT=8007 \
+-e LIVEBOOK_IFRAME_PORT=8008 \
 -u $(id -u):$(id -g) \
 -v $(pwd):/data \
 ghcr.io/livebook-dev/livebook:0.8.1
@@ -40,7 +43,7 @@ ghcr.io/livebook-dev/livebook:0.8.1
 - If succeed, it should oupt something like:
 
   ```sh
-  [Livebook] Application running at http://0.0.0.0:8080/?token=gwc234cmrxsfnqkaeeu6hv7wjhg3qe2g
+  [Livebook] Application running at http://0.0.0.0:8007/?token=gwc234cmrxsfnqkaeeu6hv7wjhg3qe2g
   ```
 
 ## Connect to the node from Livebook
@@ -77,3 +80,7 @@ ghcr.io/livebook-dev/livebook:0.8.1
   - uninstall docker desktop from windows 11 
   - [install docker in Ubuntu20.04](https://docs.docker.com/engine/install/ubuntu/)
   - Start livebook docker as before, you should click and visit Livebook from that address now.
+- Protocol 'inet_tcp': the name livebook_server@zwpdbh seems to be in use by another Erlang node
+  - see [--name xxxxx appears to be ignored when provided with livebook start](https://github.com/livebook-dev/livebook/discussions/1356)
+  - Reason: [Docker is using release scripts, which is separate from the Livebook CLI. ](https://hexdocs.pm/mix/Mix.Tasks.Release.html#module-environment-variables).
+  - Solution: provide `-e RELEASE_NODE=elixir_horizion`. 

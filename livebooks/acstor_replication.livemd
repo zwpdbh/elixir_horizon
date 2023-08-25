@@ -386,6 +386,8 @@ EOF
 "kubectl apply -f  #{storage_class_yaml}" |> ExecCmd.run()
 ```
 
+<!-- livebook:{"branch_parent_index":0} -->
+
 ## 7. Create PVC
 
 Create PVC(s) with storage class `acstor-replication`
@@ -614,6 +616,7 @@ What we need to test in replication rebuild is:
 
 * We need to unable the node which there is no user pod created on it.
 * For instance, the fio application is created on node0, we should **NOT**  unlable this node.
+* For rebuilding work, the minimum labeled node must be `>=` 2.
 
 ```elixir
 # Check node with "io-engine" label
@@ -661,16 +664,25 @@ test-pod-00-000   1/1     Running   0          18h   10.244.3.24   aks-storagepo
 test-pod-00-002   1/1     Running   0          34m   10.244.3.25   aks-storagepool-17429370-vmss000000   <none>           <none>
 ```
 
-we can unlabel "aks-storagepool-17429370-vmss000001" and "aks-storagepool-17429370-vmss000002"
+we can unlabel "aks-storagepool-17429370-vmss000001" or "aks-storagepool-17429370-vmss000002".
 
-<!-- livebook:{"break_markdown":true} -->
+```elixir
+"kubectl label node aks-storagepool-17429370-vmss000001 acstor.azure.com/io-engine-"
+|> ExecCmd.run()
+```
 
-1. Verify the one of the io-engine is removed 
-   ```
-   kubectl get pod -n acstor | grep io-engine
-   ```
+1. Verify the one of the io-engine is removed
 
-<!-- livebook:{"break_markdown":true} -->
+```elixir
+"kubectl get node --show-labels | grep io-engine" |> ExecCmd.run()
+```
+
+Each labelled io-engine node will have a corresponding io-engine pod in namespace `acstor`. When we remove the label from a node, the corresponding pod is also removed.
+
+```elixir
+"kubectl get pod -n acstor | grep io-engine"
+|> ExecCmd.run()
+```
 
 1. Add label back `acstor.azure.com/io-engine=acstor` to the node.
 
@@ -679,9 +691,140 @@ we can unlabel "aks-storagepool-17429370-vmss000001" and "aks-storagepool-174293
 * Based on the interval of time between relabel, there is `Rebuilding` and `Partial Rebuilding`
 * This doesn't afffect how to test rebuilding or how to verify its result. But it has differences
 
+```elixir
+"kubectl label node aks-storagepool-17429370-vmss000001 acstor.azure.com/io-engine=acstor"
+|> ExecCmd.run()
+```
+
+```elixir
+"kubectl get node --show-labels | grep io-engine"
+|> ExecCmd.run()
+```
+
+```elixir
+# Verify the corresponding pod in acstor namespace are recovered
+"kubectl get pod -n acstor | grep io-engine"
+|> ExecCmd.run()
+```
+
+Verify the rebuilding is finished.
+
+```elixir
+"kubectl get pod -n acstor | grep api-rest"
+|> ExecCmd.run()
+```
+
+```elixir
+# The "&" make the command execute in background
+host_port = 9096
+
+port_mapping_pid =
+  Task.start(fn ->
+    "kubectl port-forward acstor-api-rest-7f6f545689-fnchn -n acstor #{host_port}:8081"
+    |> ExecCmd.run()
+  end)
+```
+
+```elixir
+"curl -X 'GET' 'http://127.0.0.1:#{host_port}/v0/volumes?max_entries=1' -H 'accept: application/json'  | jq"
+|> ExecCmd.run()
+```
+
+The output
+
+```
+$ curl -X 'GET' 'http://127.0.0.1:9092/v0/volumes?max_entries=1' -H 'accept: application/json'  | jq
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0Handling connection for 9092
+100  1626  100  1626    0     0   1818      0 --:--:-- --:--:-- --:--:--  1816
+{
+  "entries": [
+    {
+      "spec": {
+        "num_replicas": 3,
+        "size": 107374182400,
+        "status": "Created",
+        "target": {
+          "node": "aks-storagepool-17429370-vmss000000",
+          "protocol": "nvmf"
+        },
+        "uuid": "3e675149-2633-421c-b090-c6e4801a7f56",
+        "topology": {
+          "pool_topology": {
+            "labelled": {
+              "exclusion": {},
+              "inclusion": {
+                "openebs.io/created-by": "operator-diskpool"
+              }
+            }
+          }
+        },
+        "policy": {
+          "self_heal": true
+        },
+        "thin": true
+      },
+      "state": {
+        "target": {
+          "children": [
+            {
+              "state": "Online",
+              "uri": "bdev:////xfs-disk-pool/csi-758fm/ff9fdb2f-380d-4e11-9b2b-37c44fa0290e?uuid=ff9fdb2f-380d-4e11-9b2b-37c44fa0290e"
+            },
+            {
+              "state": "Online",
+              "uri": "nvmf://10.224.0.9:8420/nqn.2019-05.io.openebs:/xfs-disk-pool/csi-7zjkf/be3adf14-e030-438a-9067-342366581c97?uuid=be3adf14-e030-438a-9067-342366581c97"
+            },
+            {
+              "state": "Online",
+              "uri": "nvmf://10.224.0.8:8420/nqn.2019-05.io.openebs:/xfs-disk-pool/csi-p7fnt/40dda88c-257c-454a-b8fd-77056989dfa9?uuid=40dda88c-257c-454a-b8fd-77056989dfa9"
+            }
+          ],
+          "deviceUri": "nvmf://10.224.0.7:8420/nqn.2019-05.io.openebs:3e675149-2633-421c-b090-c6e4801a7f56",
+          "node": "aks-storagepool-17429370-vmss000000",
+          "rebuilds": 0,
+          "protocol": "nvmf",
+          "size": 107374182400,
+          "state": "Online",
+          "uuid": "628a3120-f46c-48ab-8bf2-9e1b7e4d8d8e"
+        },
+        "size": 107374182400,
+        "status": "Online",
+        "uuid": "3e675149-2633-421c-b090-c6e4801a7f56",
+        "replica_topology": {
+          "be3adf14-e030-438a-9067-342366581c97": {
+            "node": "aks-storagepool-17429370-vmss000001",
+            "pool": "csi-7zjkf",
+            "state": "Online"
+          },
+          "40dda88c-257c-454a-b8fd-77056989dfa9": {
+            "node": "aks-storagepool-17429370-vmss000002",
+            "pool": "csi-p7fnt",
+            "state": "Online"
+          },
+          "ff9fdb2f-380d-4e11-9b2b-37c44fa0290e": {
+            "node": "aks-storagepool-17429370-vmss000000",
+            "pool": "csi-758fm",
+            "state": "Online"
+          }
+        }
+      }
+    }
+  ],
+  "next_token": 1
+}
+```
+
 <!-- livebook:{"break_markdown":true} -->
 
-1. Wait rebulding finished then check MD5
+**Notice**
+
+* `/xfs-disk-pool/csi-7zjkf/` could be used to check md5 (see how to verify md5)
+
+<!-- livebook:{"break_markdown":true} -->
+
+1. Wait rebulding finished then check MD5 (check previous roadmap)
 
 <!-- livebook:{"break_markdown":true} -->
 
@@ -715,6 +858,15 @@ Partial rebuilding
 Other notes:
 
 * The finish of rebuilding is indicated by `state: Online`.
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Others
+
+* node - add label -> io-engione pod in acstor ns
+* acstora extension -> storagepool -> diskpool -> pvc
+* label node (targetnode) -> create pod (on targetnode) + pvc name
+* Usually we don't need to create/specify pvc, the reason for us is because we want to use acstora extension's feature
 
 <!-- livebook:{"branch_parent_index":0} -->
 

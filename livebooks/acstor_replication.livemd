@@ -392,8 +392,10 @@ Create PVC(s) with storage class `acstor-replication`
 Change the `name` and `storage` (size) as needed
 
 ```elixir
-pvc_name = "pv-00-000"
-storage_size = "100Gi"
+pvc_settings = %{
+  name: "pv-00-001",
+  size: "100Gi"
+}
 ```
 
 ```elixir
@@ -404,13 +406,13 @@ cat<<EOF >#{pvc_yaml}
 apiVersion: v1 
 kind: PersistentVolumeClaim 
 metadata: 
-  name: #{pvc_name}
+  name: #{pvc_settings.name}
 spec: 
   accessModes: 
   - ReadWriteOnce 
   resources: 
     requests: 
-      storage: #{storage_size} 
+      storage: #{pvc_settings.size} 
   storageClassName: acstor-replication  
 EOF
 """
@@ -430,6 +432,8 @@ EOF
 After creation, the pvc is in `pending` status. We need to create a pod to consume it.
 
 ## 8. Create Pod
+
+### Label the nodes
 
 To create pod on specific node, we need to label those node first.
 
@@ -459,30 +463,32 @@ end)
 |> ExecCmd.run()
 ```
 
+### Create pod on specific node
+
+```elixir
+pod_settings = %{
+  node_label: "node0",
+  pvc: pvc_settings.name,
+  name: "test-pod-00-002",
+  yaml: "~/download/pod.yaml"
+}
+```
+
 ```elixir
 # Firnall, create pod on specific node
-# from previous steps in this section
-target_node = "node0"
-# custom
-pod_name = "test-pod-00-000"
-# from section 7.
-pvc_name = "pv-00-000"
-
-pod_yaml = "~/download/pod.yaml"
-
 """
-cat<<EOF >#{pod_yaml}
+cat<<EOF >#{pod_settings.yaml}
 kind: Pod 
 apiVersion: v1 
 metadata: 
-  name: #{pod_name} 
+  name: #{pod_settings.name} 
 spec: 
   volumes: 
     - name: ms-volume 
       persistentVolumeClaim: 
-        claimName: #{pvc_name} 
+        claimName: #{pod_settings.pvc} 
   containers: 
-    - name: #{pod_name} 
+    - name: #{pod_settings.name} 
       image: acrldi.azurecr.io/acstor-test 
       args: 
         - sleep 
@@ -491,14 +497,14 @@ spec:
         - mountPath: "/volume" 
           name: ms-volume 
   nodeSelector: 
-    targetNode: "#{target_node}"   
+    targetNode: "#{pod_settings.node_label}"   
 EOF
 """
 |> ExecCmd.run()
 ```
 
 ```elixir
-"kubectl apply -f  #{pod_yaml}" |> ExecCmd.run()
+"kubectl apply -f  #{pod_settings.yaml}" |> ExecCmd.run()
 ```
 
 ```elixir
@@ -511,7 +517,7 @@ EOF
 
 ```elixir
 """
-kubectl exec -it #{pod_name} -- fio \
+kubectl exec -it #{pod_settings.name} -- fio \
 --name=benchtest --size=2g \
 --filename=/volume/test \
 --direct=1 --rw=randrw --rwmixread=30 \
@@ -549,9 +555,23 @@ sh-5.1# md5sum /xfs-disk-pool/csi-7zjkf/*
 
 <!-- livebook:{"break_markdown":true} -->
 
-The purpose of this is make sure all md5 values of each volumes for different io-engines are all the same.
+* The purpose of this is make sure all md5 values of each volumes for different io-engines are all the same.
+
+<!-- livebook:{"break_markdown":true} -->
+
+The current problem for checking or running md5 on io-engine's file is we don't know its name beforehand. \
+How to know this value in advance?
+
+```elixir
+"kubectl exec -it acstor-io-engine-6dnql -n acstor -c io-engine -- ls -lht /xfs-disk-pool/"
+|> ExecCmd.run()
+```
+
+<!-- livebook:{"branch_parent_index":0} -->
 
 ## 10. Replication Rebuild
+
+### Roadmap
 
 So far, within a AKS cluster
 
@@ -559,14 +579,16 @@ So far, within a AKS cluster
 
 * Label those nodes with tag: `acstor.azure.com/io-engine=acstor`
 
-* Those labeled nodes will make acstor extension to create special pods checked by:
+* Those labeled nodes will make acstor extension to create special pods:
 
   ```
-    kubectl get pod -n acstor | grep io-engine 
+    $kubectl get pod -n acstor | grep io-engine 
+    acstor-io-engine-6dnql                                 2/2     Running                 0              83m
+    acstor-io-engine-dg9gm                                 2/2     Running                 0              84m
+    acstor-io-engine-v8drc                                 2/2     Running                 0              86m 
   ```
 
-  * Each io-engine is a running application in pod with special name.
-
+  Each io-engine is a running application in pod with special name.\
   That's why we need to first add node pool and label the nodes before we install acstor-extension.
 
 <!-- livebook:{"break_markdown":true} -->
@@ -577,7 +599,8 @@ What we need to test in replication rebuild is:
   The purpose of this is to simualte incident in io-engine.
 * Then, re-add the label back to the node.
 * At last, we check the rebuilding 
-  * Rebuilding means the volumes in some io-engine, such as `acstor-io-engine-6dnql` should be recovered.
+  * Rebuilding means the volumes(PVC) in some io-engine, such as `acstor-io-engine-6dnql` should be recovered.
+  * Currently, we just created one PVC. There could be multiple PVs for one node.
 
 <!-- livebook:{"break_markdown":true} -->
 
@@ -585,12 +608,60 @@ What we need to test in replication rebuild is:
 
 <!-- livebook:{"break_markdown":true} -->
 
-1. Delete io-engine pod by unlabel one of the node.
+1. Delete pod with label "io-engine" by unlabelling it.
 
 **Notice**
 
 * We need to unable the node which there is no user pod created on it.
 * For instance, the fio application is created on node0, we should **NOT**  unlable this node.
+
+```elixir
+# Check node with "io-engine" label
+"kubectl get node --show-labels | grep io-engine" |> ExecCmd.run()
+```
+
+Remember, when we create pod, we create it on specific node. This is done by (see section 8):
+
+* Label each node
+* Specify the node's label in the pod's yaml file.
+
+```elixir
+# From section 8
+pod_settings = %{
+  name: "test-pod-00-002",
+  node_label: "node0",
+  pvc: "pv-00-001",
+  yaml: "~/download/pod.yaml"
+}
+```
+
+So, we need to check the current running pods to see which nodes they are running on.
+
+```elixir
+"kubectl get pods -o wide"
+|> ExecCmd.run()
+```
+
+So, from the output:
+
+```
+10:53:29.683 [info] kubectl get node --show-labels | grep io-engine
+aks-storagepool-17429370-vmss000000   Ready    agent   23h   v1.26.6   acstor.azure.com/io-engine=acstor,agentpool=storagepool,beta.kubernetes.io/arch=amd64,beta.kubernetes.io/instance-type=Standard_D4s_v3,beta.kubernetes.io/os=linux,failure-domain.beta.kubernetes.io/region=eastus,failure-domain.beta.kubernetes.io/zone=0,kubernetes.azure.com/agentpool=storagepool,kubernetes.azure.com/cluster=MC_acstor-replication-test_acstor-replication-test01_eastus,kubernetes.azure.com/consolidated-additional-properties=dc28639d-422c-11ee-8ff3-aefbca123c25,kubernetes.azure.com/kubelet-identity-client-id=e3681fa3-21a4-44ba-9cbb-e1b9c1f57ac0,kubernetes.azure.com/mode=user,kubernetes.azure.com/node-image-version=AKSUbuntu-2204gen2containerd-202308.10.0,kubernetes.azure.com/nodepool-type=VirtualMachineScaleSets,kubernetes.azure.com/os-sku=Ubuntu,kubernetes.azure.com/role=agent,kubernetes.azure.com/storageprofile=managed,kubernetes.azure.com/storagetier=Premium_LRS,kubernetes.io/arch=amd64,kubernetes.io/hostname=aks-storagepool-17429370-vmss000000,kubernetes.io/os=linux,kubernetes.io/role=agent,node-role.kubernetes.io/agent=,node.kubernetes.io/instance-type=Standard_D4s_v3,openebs.io/nodename=aks-storagepool-17429370-vmss000000,storageprofile=managed,storagetier=Premium_LRS,targetNode=node0,topology.disk.csi.azure.com/zone=,topology.kubernetes.io/region=eastus,topology.kubernetes.io/zone=0,topology.san.csi.azure.com/zone=
+aks-storagepool-17429370-vmss000001   Ready    agent   23h   v1.26.6   acstor.azure.com/io-engine=acstor,agentpool=storagepool,beta.kubernetes.io/arch=amd64,beta.kubernetes.io/instance-type=Standard_D4s_v3,beta.kubernetes.io/os=linux,failure-domain.beta.kubernetes.io/region=eastus,failure-domain.beta.kubernetes.io/zone=0,kubernetes.azure.com/agentpool=storagepool,kubernetes.azure.com/cluster=MC_acstor-replication-test_acstor-replication-test01_eastus,kubernetes.azure.com/consolidated-additional-properties=dc28639d-422c-11ee-8ff3-aefbca123c25,kubernetes.azure.com/kubelet-identity-client-id=e3681fa3-21a4-44ba-9cbb-e1b9c1f57ac0,kubernetes.azure.com/mode=user,kubernetes.azure.com/node-image-version=AKSUbuntu-2204gen2containerd-202308.10.0,kubernetes.azure.com/nodepool-type=VirtualMachineScaleSets,kubernetes.azure.com/os-sku=Ubuntu,kubernetes.azure.com/role=agent,kubernetes.azure.com/storageprofile=managed,kubernetes.azure.com/storagetier=Premium_LRS,kubernetes.io/arch=amd64,kubernetes.io/hostname=aks-storagepool-17429370-vmss000001,kubernetes.io/os=linux,kubernetes.io/role=agent,node-role.kubernetes.io/agent=,node.kubernetes.io/instance-type=Standard_D4s_v3,openebs.io/nodename=aks-storagepool-17429370-vmss000001,storageprofile=managed,storagetier=Premium_LRS,targetNode=node1,topology.disk.csi.azure.com/zone=,topology.kubernetes.io/region=eastus,topology.kubernetes.io/zone=0,topology.san.csi.azure.com/zone=
+aks-storagepool-17429370-vmss000002   Ready    agent   23h   v1.26.6   acstor.azure.com/io-engine=acstor,agentpool=storagepool,beta.kubernetes.io/arch=amd64,beta.kubernetes.io/instance-type=Standard_D4s_v3,beta.kubernetes.io/os=linux,failure-domain.beta.kubernetes.io/region=eastus,failure-domain.beta.kubernetes.io/zone=0,kubernetes.azure.com/agentpool=storagepool,kubernetes.azure.com/cluster=MC_acstor-replication-test_acstor-replication-test01_eastus,kubernetes.azure.com/consolidated-additional-properties=dc28639d-422c-11ee-8ff3-aefbca123c25,kubernetes.azure.com/kubelet-identity-client-id=e3681fa3-21a4-44ba-9cbb-e1b9c1f57ac0,kubernetes.azure.com/mode=user,kubernetes.azure.com/node-image-version=AKSUbuntu-2204gen2containerd-202308.10.0,kubernetes.azure.com/nodepool-type=VirtualMachineScaleSets,kubernetes.azure.com/os-sku=Ubuntu,kubernetes.azure.com/role=agent,kubernetes.azure.com/storageprofile=managed,kubernetes.azure.com/storagetier=Premium_LRS,kubernetes.io/arch=amd64,kubernetes.io/hostname=aks-storagepool-17429370-vmss000002,kubernetes.io/os=linux,kubernetes.io/role=agent,node-role.kubernetes.io/agent=,node.kubernetes.io/instance-type=Standard_D4s_v3,openebs.io/nodename=aks-storagepool-17429370-vmss000002,storageprofile=managed,storagetier=Premium_LRS,targetNode=node2,topology.disk.csi.azure.com/zone=,topology.kubernetes.io/region=eastus,topology.kubernetes.io/zone=0,topology.san.csi.azure.com/zone=
+
+```
+
+and
+
+```
+10:53:40.546 [info] kubectl get pods -o wide
+NAME              READY   STATUS    RESTARTS   AGE   IP            NODE                                  NOMINATED NODE   READINESS GATES
+test-pod-00-000   1/1     Running   0          18h   10.244.3.24   aks-storagepool-17429370-vmss000000   <none>           <none>
+test-pod-00-002   1/1     Running   0          34m   10.244.3.25   aks-storagepool-17429370-vmss000000   <none>           <none>
+```
+
+we can unlabel "aks-storagepool-17429370-vmss000001" and "aks-storagepool-17429370-vmss000002"
 
 <!-- livebook:{"break_markdown":true} -->
 

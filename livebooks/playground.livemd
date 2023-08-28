@@ -198,7 +198,7 @@ Aks.list_workflows() |> length
 ```
 
 ```elixir
-Aks.list_aks_workflows_after("2023-08-21")
+Aks.list_aks_workflows_after("2023-08-27")
 |> Aks.summary_workflows()
 |> Enum.map(fn x -> %{definition_name: x.definition_name, version: x.definition_version} end)
 |> length
@@ -212,24 +212,22 @@ my_aks_clusters =
 ```
 
 ```elixir
-target = "bq8mb1" |> String.downcase()
-
-my_aks_clusters
-|> Enum.filter(fn x -> x |> String.downcase() |> String.contains?(target) end)
-```
-
-```elixir
 Aks.list_aks_failed_workflows()
-|> Aks.filter_workflows_after_date("2023-08-21")
+|> Aks.filter_workflows_after_date("2023-08-27")
 |> Aks.summary_workflows()
 ```
 
 ```elixir
-Aks.overwrite_default_k8s_config("c296aaff-4871-4369-b502-3785c6bb8e12")
+Aks.overwrite_default_k8s_config("ea4a1a8a-e68e-46d4-98c9-516573ed901e")
+# Aks.overwrite_default_k8s_config("94669baf-2388-44ae-a0b9-d5754685dd0c")
 ```
 
 ```elixir
 ExecCmd.run("kubectl get pods")
+```
+
+```elixir
+"kubectl get pvc" |> ExecCmd.run()
 ```
 
 ```elixir
@@ -238,7 +236,7 @@ ExecCmd.run("kubectl get node -o wide")
 ```
 
 ```elixir
-ExecCmd.run("kubectl describe pod pod-shareddisk-0")
+ExecCmd.run("kubectl describe pvc xscn-workflow-pvc")
 ```
 
 when you run `kubectl get po -n kube-system`, you're asking Kubernetes to retrieve and display information about all the pods in the kube-system namespace.
@@ -258,7 +256,16 @@ ExecCmd.run("kubectl get po -n kube-system -o wide | grep csi | grep win")
 ExecCmd.run("cp ~/.kube/config /mnt/d/Downloads/K8sWindowsStaticCsiSnapshotV2.config")
 ```
 
-#### Common commands to run during troubleshootings
+```elixir
+"""
+kubectl delete --all pods && \
+kubectl delete --all pvc && \
+kubectl delete --all pv
+"""
+|> ExecCmd.run()
+```
+
+### Common commands to run during troubleshootings
 
 ##### Check pod status
 
@@ -278,6 +285,20 @@ kubectl get po -n kube-system | grep csi
 kubectl get node -o wide
 
 However, we better check nodes status from portal.
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Common command to delete resources
+
+```
+kubectl delete --all pods
+kubectl delete --all pvc
+kubectl delete --all pv
+
+kubectl delete --all pv --force
+
+kubectl delete --all deployments
+```
 
 <!-- livebook:{"branch_parent_index":0} -->
 

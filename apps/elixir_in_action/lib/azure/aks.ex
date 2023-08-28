@@ -260,7 +260,7 @@ defmodule Azure.Aks do
 
       workflow_id
       |> terminate_workflow()
-      |> cleanup_aks_storage()
+      |> clean_up_pod_pvc_and_pv()
 
       {:ok, workflow_id}
     rescue
@@ -269,29 +269,18 @@ defmodule Azure.Aks do
     end
   end
 
-  def cleanup_aks_storage(workflow_id) do
-    clean_up_pods(workflow_id)
-    |> clean_up_pvc()
-    |> clean_up_pv()
-  end
-
-  def clean_up_pods(workflow_id) do
-    run_kubectl_cmd_for_id(workflow_id, "kubectl delete --all pods")
-  end
-
-  def clean_up_pvc(workflow_id) do
-    run_kubectl_cmd_for_id(workflow_id, "kubectl delete --all pvc")
-  end
-
-  def clean_up_pv(workflow_id) do
-    run_kubectl_cmd_for_id(workflow_id, "kubectl delete --all pv")
+  def clean_up_pod_pvc_and_pv(workflow_id) do
+    run_kubectl_cmd_for_id(
+      workflow_id,
+      "kubectl delete --all pods && kubectl delete --all pvc && kubectl delete --all pv"
+    )
   end
 
   def run_kubectl_cmd_for_id(id, command_str) do
     get_aks_config_from_workflow_id(id)
     |> run_kubectl_cmd(command_str)
 
-    id
+    # id
   end
 
   # Suppose we need to operate multiple AKS clusters using kubectl, then we need to specify different kubeconfig for each cluster.

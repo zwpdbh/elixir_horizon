@@ -218,8 +218,8 @@ Aks.list_aks_failed_workflows()
 ```
 
 ```elixir
-Aks.overwrite_default_k8s_config("ea4a1a8a-e68e-46d4-98c9-516573ed901e")
-# Aks.overwrite_default_k8s_config("94669baf-2388-44ae-a0b9-d5754685dd0c")
+# Aks.overwrite_default_k8s_config("ea4a1a8a-e68e-46d4-98c9-516573ed901e")
+Aks.overwrite_default_k8s_config("94669baf-2388-44ae-a0b9-d5754685dd0c")
 ```
 
 ```elixir
@@ -263,6 +263,10 @@ kubectl delete --all pvc && \
 kubectl delete --all pv
 """
 |> ExecCmd.run()
+```
+
+```elixir
+Aks.cleanup_all_failed_workflows()
 ```
 
 ### Common commands to run during troubleshootings

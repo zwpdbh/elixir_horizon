@@ -270,8 +270,8 @@ defmodule Azure.Aks do
   end
 
   def clean_up_pod_pvc_and_pv(workflow_id) do
-    run_kubectl_cmd_for_id(
-      workflow_id,
+    workflow_id
+    |> run_kubectl_cmd_for_id(
       "kubectl delete --all pods && kubectl delete --all pvc && kubectl delete --all pv"
     )
   end

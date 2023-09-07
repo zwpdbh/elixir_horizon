@@ -193,15 +193,23 @@ Aks.module_info()
 ```
 
 ```elixir
-Aks.update_latest_workflows(200)
+Aks.update_latest_workflows(100)
 Aks.list_workflows() |> length
 ```
 
 ```elixir
-Aks.list_aks_workflows_after("2023-08-27")
+Aks.list_aks_workflows_after("2023-09-06")
 |> Aks.summary_workflows()
-|> Enum.map(fn x -> %{definition_name: x.definition_name, version: x.definition_version} end)
-|> length
+|> Enum.map(fn x ->
+  %{
+    workflow_id: x.id,
+    definition_name: x.definition_name,
+    version: x.definition_version,
+    status: x.status
+  }
+end)
+
+# |> length
 ```
 
 ```elixir
@@ -213,13 +221,20 @@ my_aks_clusters =
 
 ```elixir
 Aks.list_aks_failed_workflows()
-|> Aks.filter_workflows_after_date("2023-08-27")
+|> Aks.filter_workflows_after_date("2023-09-06")
 |> Aks.summary_workflows()
 ```
 
 ```elixir
+{:ok, %HTTPoison.Response{body: body, status_code: 200}} =
+  Aks.get_workflow("281e275b-b7c4-454f-91ed-4687e7504e6b")
+
+body |> Jason.decode!()
+```
+
+```elixir
 # Aks.overwrite_default_k8s_config("ea4a1a8a-e68e-46d4-98c9-516573ed901e")
-Aks.overwrite_default_k8s_config("94669baf-2388-44ae-a0b9-d5754685dd0c")
+Aks.overwrite_default_k8s_config("2af56a29-bf18-47ca-a274-3ebe8fb5e38c")
 ```
 
 ```elixir

@@ -207,6 +207,18 @@ defmodule Azure.Aks do
     workflow_id
   end
 
+  def get_workflow(workflow_id) do
+    auth_token = get_auth_token()
+    url = @uri <> "/api/Workflow/#{workflow_id}"
+
+    headers =
+      RestClient.add_header("Content-type", "application/json")
+      |> RestClient.add_header("accept", "text/plain")
+      |> RestClient.add_header("Authorization", "Bearer #{auth_token.access_token}")
+
+    RestClient.get_request(url, nil, headers)
+  end
+
   def cleanup_all_failed_workflows() do
     # From: https://hexdocs.pm/elixir/Task.html#async_stream/3-example
     # I use this: https://hexdocs.pm/elixir/Task.Supervisor.html#async_stream/4

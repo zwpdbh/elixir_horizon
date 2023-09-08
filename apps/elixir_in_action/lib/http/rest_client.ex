@@ -1,6 +1,8 @@
 defmodule Http.RestClient do
   alias Http.RestClient
 
+  @timeout 30_000
+
   defstruct [
     :url,
     :header,
@@ -65,12 +67,12 @@ defmodule Http.RestClient do
   end
 
   def get_request(uri, nil, %{} = header_map) do
-    HTTPoison.get(uri, map_to_tuple_list(header_map))
+    HTTPoison.get(uri, map_to_tuple_list(header_map), recv_timeout: @timeout)
   end
 
   def get_request(uri, %{} = query_map, %{} = header_map) do
     query_str = query_map |> encode_query_map_to_uri()
-    HTTPoison.get(uri <> "?" <> query_str, map_to_tuple_list(header_map))
+    HTTPoison.get(uri <> "?" <> query_str, map_to_tuple_list(header_map), recv_timeout: @timeout)
   end
 
   # For example: uri is: "https://api.twelvedata.com/time_series"
@@ -84,11 +86,11 @@ defmodule Http.RestClient do
   # }
   def get_request(uri, %{} = query_map) do
     query_str = query_map |> encode_query_map_to_uri()
-    HTTPoison.get(uri <> "?" <> query_str)
+    HTTPoison.get(uri <> "?" <> query_str, recv_timeout: @timeout)
   end
 
   def get_request(uri) do
-    HTTPoison.get(uri)
+    HTTPoison.get(uri, recv_timeout: @timeout)
   end
 
   def post_request(uri, %{} = body_map, %{} = header_map, %{} = query_map) do

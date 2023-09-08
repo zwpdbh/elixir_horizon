@@ -194,11 +194,41 @@ Aks.module_info()
 
 ```elixir
 Aks.update_latest_workflows(100)
-Aks.list_workflows() |> length
 ```
 
 ```elixir
-Aks.list_aks_workflows_after("2023-09-06")
+alias Azure.AuthAgent
+alias Http.RestClient
+
+uri = "https://xscnworkflowconsole.eastus.cloudapp.azure.com"
+
+auth_token = AuthAgent.get_auth_token(AuthAgent.xscnworkflow_scope())
+
+query_str =
+  RestClient.add_query("count", 100)
+  |> URI.encode_query()
+
+headers =
+  RestClient.add_header("Content-type", "application/json")
+  |> RestClient.add_header("accept", "text/plain")
+  |> RestClient.add_header("Authorization", "Bearer #{auth_token.access_token}")
+  |> Enum.map(fn {key, value} -> {key, value} end)
+
+response =
+  HTTPoison.get(uri <> "/api/Workflow" <> "?" <> query_str, headers, recv_timeout: 30_000)
+
+# case response do
+#   {:ok, %HTTPoison.Response{body: body_str}} ->
+#     {:ok, Jason.decode!(body_str)}
+
+#   err ->
+#     err |> IO.inspect(label: "#{__MODULE__} 64")
+#     {:err, err}
+# end
+```
+
+```elixir
+Aks.list_aks_workflows_after("2023-09-07")
 |> Aks.summary_workflows()
 |> Enum.map(fn x ->
   %{
@@ -208,8 +238,7 @@ Aks.list_aks_workflows_after("2023-09-06")
     status: x.status
   }
 end)
-
-# |> length
+|> length
 ```
 
 ```elixir
@@ -221,7 +250,7 @@ my_aks_clusters =
 
 ```elixir
 Aks.list_aks_failed_workflows()
-|> Aks.filter_workflows_after_date("2023-09-06")
+|> Aks.filter_workflows_after_date("2023-09-07")
 |> Aks.summary_workflows()
 ```
 
@@ -398,4 +427,91 @@ end
 ```elixir
 Path.join([File.cwd!(), "tmp/VM_deployment_Logs_2023_08_10_07_31.csv"])
 |> VmDeploymentLog.summary_usage()
+```
+
+## Global setting for AKS clusters
+
+```elixir
+aks_list = [
+  "Win-AKS-Dynamic-7yylv4",
+  "k8s-dynamic-r4vxst",
+  "AKS-Dynamic-02nct9",
+  "Win-AKS-Static-j67zwh",
+  "Win-AKS-Dynamic-7GLNB6",
+  "Win-AKS-Static-wpo9fv",
+  "Win-AKS-Dynamic-ygsyl7",
+  "Win-AKS-Dynamic-gadpf2",
+  "fixed-pocZ1KJVV"
+]
+```
+
+### Azure Kubernetes Service CVE
+
+For solving problem: [AzRel Red Flag- BlueCheese (Azure Kubernetes Service CVE)](https://microsoftapc.sharepoint.com/teams/RedFlag-AzureKubernetesServiceAKSCVE2/SitePages/Red-Flag--Azure-Kubernetes-Service-(AKS)-CVE.aspx)
+
+Solution:
+
+* [Upgrade Azure Kubernetes Service (AKS) node images](https://learn.microsoft.com/en-us/azure/aks/node-image-upgrade)
+
+The following require us to open terminal and run "az-login" first (with JIT permission granted).
+
+```elixir
+ExecCmd.run("az account set --subscription 33922553-c28a-4d50-ac93-a5c682692168")
+```
+
+<!-- livebook:{"branch_parent_index":4} -->
+
+## Check for available node image upgrades
+
+```elixir
+# List the node pool for a AKS cluster
+aks_name = "Win-AKS-Dynamic-7yylv4"
+
+{:ok, node_pools} =
+  ExecCmd.run("az aks nodepool list --cluster-name #{aks_name} --resource-group #{aks_name}")
+```
+
+```elixir
+node_pools =
+  node_pools
+  |> Jason.decode!()
+  |> Enum.map(fn each -> %{id: Map.get(each, "id"), name: Map.get(each, "name")} end)
+```
+
+```elixir
+# Check for available node image upgrades
+# This will output the latest available node image for that node pool.
+node_pool_name = "winpl"
+
+ExecCmd.run("""
+az aks nodepool get-upgrades \
+  --nodepool-name #{node_pool_name} \
+  --cluster-name #{aks_name} \
+  --resource-group #{aks_name}
+""")
+```
+
+The example output just shows `AKSWindows-2019-containerd-17763.4737.230809` as the `latestNodeImageVersion`.
+
+```elixir
+# Compare the latest version with your current node image version using the az aks nodepool show command.
+ExecCmd.run("""
+az aks nodepool show \
+    --resource-group #{aks_name} \
+    --cluster-name #{aks_name} \
+    --name #{node_pool_name} \
+    --query nodeImageVersion
+""")
+```
+
+In this example, there is an available node image version upgrade, which is from version
+`AKSWindows-2019-containerd-17763.4645.230712` to version `AKSWindows-2019-containerd-17763.4737.230809`.
+
+<!-- livebook:{"branch_parent_index":4} -->
+
+## Node OS auto-upgrade channel on existing cluster
+
+```elixir
+aks_list
+|> Azure.Aks.enable_aks_node_pool_os_auto_upgrade()
 ```

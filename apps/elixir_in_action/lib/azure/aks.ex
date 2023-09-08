@@ -381,4 +381,42 @@ defmodule Azure.Aks do
       %{"aks" => aks_name, "autoUpgradeProfile" => Map.get(profile, "autoUpgradeProfile")}
     end)
   end
+
+  def list_node_pools_for_aks_cluster(aks_cluster) do
+    {:ok, node_pools} =
+      ExecCmd.run(
+        "az aks nodepool list --cluster-name #{aks_cluster} --resource-group #{aks_cluster}"
+      )
+
+    node_pools
+    |> Jason.decode!()
+    |> Enum.map(fn each ->
+      %{
+        id: Map.get(each, "id"),
+        name: Map.get(each, "name"),
+        nodeImageVersion: Map.get(each, "nodeImageVersion"),
+        aks: aks_cluster
+      }
+    end)
+  end
+
+  def list_node_pools_for_aks_clusters(aks_clusters) do
+    Task.async_stream(
+      aks_clusters,
+      fn aks -> list_node_pools_for_aks_cluster(aks) end,
+      max_concurrency: 3,
+      timeout: 30_000,
+      on_timeout: :kill_task,
+      zip_input_on_exit: true
+    )
+    |> Enum.reduce(%{}, fn result, acc ->
+      case result do
+        {:ok, pools} ->
+          Map.update(acc, :ok, pools, fn existing_pools -> pools ++ existing_pools end)
+
+        {_err, reason} ->
+          Map.update(acc, :err, [reason], fn existing_ones -> [reason | existing_ones] end)
+      end
+    end)
+  end
 end

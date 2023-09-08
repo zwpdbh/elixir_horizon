@@ -515,3 +515,31 @@ In this example, there is an available node image version upgrade, which is from
 aks_list
 |> Azure.Aks.enable_aks_node_pool_os_auto_upgrade()
 ```
+
+<!-- livebook:{"branch_parent_index":4} -->
+
+## Migrate Linux node pool to Mariner 2.0
+
+```elixir
+Azure.Aks.list_node_pools_for_aks_cluster("Win-AKS-Dynamic-7yylv4")
+```
+
+```elixir
+%{ok: pools} = Azure.Aks.list_node_pools_for_aks_clusters(aks_list)
+```
+
+```elixir
+pools
+|> Enum.reject(fn %{nodeImageVersion: nodeImage} ->
+  String.contains?(nodeImage |> String.downcase(), "windows")
+end)
+|> Enum.group_by(
+  fn each -> each.aks end,
+  fn each -> %{name: each.name, image: each.nodeImageVersion} end
+)
+|> Enum.filter(fn {_k, [v]} ->
+  v.image |> String.downcase() |> String.contains?("mariner-v2gen2")
+end)
+
+# |> length()
+```

@@ -158,8 +158,10 @@ defmodule Azure.Aks do
   end
 
   defp get_aks_config_from_workflow_id(id) do
-    get_workflow_from_id(id)
-    |> Map.fetch!(:k8s_config)
+    workflow_detail = get_workflow_from_id(id)
+
+    Logger.info("get k8s config for cluster: #{workflow_detail.cluster}")
+    workflow_detail |> Map.fetch!(:k8s_config)
   end
 
   def list_aks_workflows_after() do

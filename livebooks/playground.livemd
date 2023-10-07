@@ -250,7 +250,7 @@ my_aks_clusters =
 
 ```elixir
 Aks.list_aks_failed_workflows()
-|> Aks.filter_workflows_after_date("2023-09-07")
+|> Aks.filter_workflows_after_date("2023-09-15")
 |> Aks.summary_workflows()
 ```
 

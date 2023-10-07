@@ -226,7 +226,7 @@ defmodule Azure.Aks do
     workflow_id
   end
 
-  def get_workflow(workflow_id) do
+  def get_workflow_from_id(workflow_id) do
     auth_token = get_auth_token()
     url = @uri <> "/api/Workflow/#{workflow_id}"
 
@@ -235,7 +235,25 @@ defmodule Azure.Aks do
       |> RestClient.add_header("accept", "text/plain")
       |> RestClient.add_header("Authorization", "Bearer #{auth_token.access_token}")
 
-    RestClient.get_request(url, nil, headers)
+    response = RestClient.get_request(url, nil, headers)
+
+    case response do
+      {:ok, %HTTPoison.Response{body: body_str}} ->
+        {:ok, Jason.decode!(body_str)}
+
+      err ->
+        err |> IO.inspect(label: "#{__MODULE__} 64")
+        {:err, err}
+    end
+  end
+
+  def get_workflow_summary_from_id(workflow_id) do
+    {:ok, workflow} = get_workflow_from_id(workflow_id)
+
+    [workflow]
+    |> process_aks_workflows_data
+    |> summary_workflows()
+    |> List.first()
   end
 
   def cleanup_all_failed_workflows() do

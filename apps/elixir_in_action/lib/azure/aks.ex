@@ -158,9 +158,7 @@ defmodule Azure.Aks do
   end
 
   defp get_aks_config_from_workflow_id(id) do
-    list_aks_workflows()
-    |> Enum.filter(fn %{id: workflow_id} -> workflow_id == id end)
-    |> List.first()
+    get_workflow_from_id(id)
     |> Map.fetch!(:k8s_config)
   end
 
@@ -226,7 +224,7 @@ defmodule Azure.Aks do
     workflow_id
   end
 
-  def get_workflow_from_id(workflow_id) do
+  defp get_workflow_data_from_id(workflow_id) do
     auth_token = get_auth_token()
     url = @uri <> "/api/Workflow/#{workflow_id}"
 
@@ -247,12 +245,11 @@ defmodule Azure.Aks do
     end
   end
 
-  def get_workflow_summary_from_id(workflow_id) do
-    {:ok, workflow} = get_workflow_from_id(workflow_id)
+  def get_workflow_from_id(workflow_id) do
+    {:ok, workflow} = get_workflow_data_from_id(workflow_id)
 
     [workflow]
     |> process_aks_workflows_data
-    |> summary_workflows()
     |> List.first()
   end
 

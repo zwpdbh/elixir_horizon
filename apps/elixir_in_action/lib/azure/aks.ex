@@ -263,7 +263,7 @@ defmodule Azure.Aks do
       TaskSupervisor,
       list_aks_failed_workflows(),
       &cleanup_aks_workflow/1,
-      max_concurrency: 2,
+      max_concurrency: 1,
       timeout: 5_000,
       on_timeout: :kill_task,
       zip_input_on_exit: true
@@ -304,11 +304,13 @@ defmodule Azure.Aks do
 
   def cleanup_aks_workflow(%{id: workflow_id}) do
     try do
-      Logger.info("cleanup aks workflow: #{workflow_id}")
+      Logger.warn("cleanup aks workflow: #{workflow_id}")
 
       workflow_id
       |> terminate_workflow()
-      |> clean_up_pod_pvc_and_pv()
+      |> clean_up_pod_from_workflow_id()
+      |> clean_up_pvc_from_workflow_id()
+      |> clean_up_pv_from_workflow_id()
 
       {:ok, workflow_id}
     rescue
@@ -317,11 +319,25 @@ defmodule Azure.Aks do
     end
   end
 
-  def clean_up_pod_pvc_and_pv(workflow_id) do
+  def clean_up_pod_from_workflow_id(workflow_id) do
     workflow_id
-    |> run_kubectl_cmd_for_id(
-      "kubectl delete --all pods && kubectl delete --all pvc && kubectl delete --all pv"
-    )
+    |> run_kubectl_cmd_for_id("kubectl delete --all pods")
+
+    workflow_id
+  end
+
+  def clean_up_pvc_from_workflow_id(workflow_id) do
+    workflow_id
+    |> run_kubectl_cmd_for_id("kubectl delete --all pvc")
+
+    workflow_id
+  end
+
+  def clean_up_pv_from_workflow_id(workflow_id) do
+    workflow_id
+    |> run_kubectl_cmd_for_id("kubectl delete --all pv")
+
+    workflow_id
   end
 
   def run_kubectl_cmd_for_id(id, command_str) do

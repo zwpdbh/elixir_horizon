@@ -193,72 +193,24 @@ Aks.module_info()
 ```
 
 ```elixir
-Aks.update_latest_workflows(100)
-```
-
-```elixir
-alias Azure.AuthAgent
-alias Http.RestClient
-
-uri = "https://xscnworkflowconsole.eastus.cloudapp.azure.com"
-
-auth_token = AuthAgent.get_auth_token(AuthAgent.xscnworkflow_scope())
-
-query_str =
-  RestClient.add_query("count", 100)
-  |> URI.encode_query()
-
-headers =
-  RestClient.add_header("Content-type", "application/json")
-  |> RestClient.add_header("accept", "text/plain")
-  |> RestClient.add_header("Authorization", "Bearer #{auth_token.access_token}")
-  |> Enum.map(fn {key, value} -> {key, value} end)
-
-response =
-  HTTPoison.get(uri <> "/api/Workflow" <> "?" <> query_str, headers, recv_timeout: 30_000)
-
-# case response do
-#   {:ok, %HTTPoison.Response{body: body_str}} ->
-#     {:ok, Jason.decode!(body_str)}
-
-#   err ->
-#     err |> IO.inspect(label: "#{__MODULE__} 64")
-#     {:err, err}
-# end
-```
-
-```elixir
-Aks.list_aks_workflows_after("2023-09-07")
-|> Aks.summary_workflows()
-|> Enum.map(fn x ->
-  %{
-    workflow_id: x.id,
-    definition_name: x.definition_name,
-    version: x.definition_version,
-    status: x.status
-  }
-end)
-|> length
-```
-
-```elixir
-# Aks.module_info could be used to check exported functions 
-my_aks_clusters =
-  Aks.list_aks_workflows()
-  |> Aks.list_aks_clusters_from_workflows()
+Aks.update_latest_workflows(200)
 ```
 
 ```elixir
 Aks.list_aks_failed_workflows()
-|> Aks.filter_workflows_after_date("2023-09-15")
+|> Aks.filter_workflows_after_date("2023-10-08")
 |> Aks.summary_workflows()
 ```
 
 ```elixir
-{:ok, %HTTPoison.Response{body: body, status_code: 200}} =
-  Aks.get_workflow("281e275b-b7c4-454f-91ed-4687e7504e6b")
+"210bb775-38db-48a0-b5ac-a70f45d3a1fa" |> Aks.get_workflow_from_id()
+```
 
-body |> Jason.decode!()
+```elixir
+Aks.list_aks_failed_workflows()
+|> Aks.filter_workflows_after_date("2023-10-08")
+|> Aks.summary_workflows()
+|> Enum.each(fn each -> Aks.cleanup_aks_workflow(each) end)
 ```
 
 ```elixir

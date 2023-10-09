@@ -26,7 +26,6 @@ iex(elixir_horizion@localhost)1> Node.self
 ```sh
 docker run \
 --network=host \
--e RELEASE_NODE=elixir_horizion \
 -e LIVEBOOK_DISTRIBUTION=name \
 -e LIVEBOOK_COOKIE=some_token \
 -e LIVEBOOK_NODE=livebook@localhost \
@@ -75,12 +74,14 @@ ghcr.io/livebook-dev/livebook:0.8.1
 - docker: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?.
   - On ubuntu (WSL), remember to start Docker service by: `sudo service docker start`.
 - Livebook docker image could start without problem, but could not visit its address from windows 11.
-  
+
   From my experience, it is caused by I started the docker in WSL2 while the docker engine is using is Docker desktop in windows 11.
-  - uninstall docker desktop from windows 11 
+
+  - uninstall docker desktop from windows 11
   - [install docker in Ubuntu20.04](https://docs.docker.com/engine/install/ubuntu/)
   - Start livebook docker as before, you should click and visit Livebook from that address now.
+
 - Protocol 'inet_tcp': the name livebook_server@zwpdbh seems to be in use by another Erlang node
   - see [--name xxxxx appears to be ignored when provided with livebook start](https://github.com/livebook-dev/livebook/discussions/1356)
   - Reason: [Docker is using release scripts, which is separate from the Livebook CLI. ](https://hexdocs.pm/mix/Mix.Tasks.Release.html#module-environment-variables).
-  - Solution: provide `-e RELEASE_NODE=elixir_horizion`. 
+  - Solution: provide `-e RELEASE_NODE=elixir_horizion`.

@@ -198,24 +198,16 @@ Aks.update_latest_workflows(200)
 
 ```elixir
 Aks.list_aks_failed_workflows()
-|> Aks.filter_workflows_after_date("2023-10-08")
+|> Aks.filter_workflows_after_date("2023-10-10")
 |> Aks.summary_workflows()
 ```
 
 ```elixir
-"210bb775-38db-48a0-b5ac-a70f45d3a1fa" |> Aks.get_workflow_from_id()
+"6b39a6da-cb19-4033-b806-643868d02bc8" |> Aks.overwrite_default_k8s_config()
 ```
 
 ```elixir
-Aks.list_aks_failed_workflows()
-|> Aks.filter_workflows_after_date("2023-10-08")
-|> Aks.summary_workflows()
-|> Enum.each(fn each -> Aks.cleanup_aks_workflow(each) end)
-```
-
-```elixir
-# Aks.overwrite_default_k8s_config("ea4a1a8a-e68e-46d4-98c9-516573ed901e")
-Aks.overwrite_default_k8s_config("2af56a29-bf18-47ca-a274-3ebe8fb5e38c")
+"6b39a6da-cb19-4033-b806-643868d02bc8" |> Aks.get_workflow_from_id()
 ```
 
 ```elixir
@@ -232,7 +224,7 @@ ExecCmd.run("kubectl get node -o wide")
 ```
 
 ```elixir
-ExecCmd.run("kubectl describe pvc xscn-workflow-pvc")
+ExecCmd.run("kubectl describe pvc pvc-azuredisk")
 ```
 
 when you run `kubectl get po -n kube-system`, you're asking Kubernetes to retrieve and display information about all the pods in the kube-system namespace.
@@ -249,7 +241,14 @@ ExecCmd.run("kubectl get po -n kube-system -o wide | grep csi | grep win")
 
 ```elixir
 # export the kubeconfig file 
-ExecCmd.run("cp ~/.kube/config /mnt/d/Downloads/K8sWindowsStaticCsiSnapshotV2.config")
+ExecCmd.run("cp ~/.kube/config /mnt/d/Downloads/eedc2d4d-b0ef-45b4-979b-190c5bbf988b.config")
+```
+
+```elixir
+Aks.list_aks_failed_workflows()
+|> Aks.filter_workflows_after_date("2023-10-09")
+|> Aks.summary_workflows()
+|> Enum.each(fn each -> Aks.cleanup_aks_workflow(each) end)
 ```
 
 ```elixir
@@ -259,10 +258,6 @@ kubectl delete --all pvc && \
 kubectl delete --all pv
 """
 |> ExecCmd.run()
-```
-
-```elixir
-Aks.cleanup_all_failed_workflows()
 ```
 
 ### Common commands to run during troubleshootings

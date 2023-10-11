@@ -112,6 +112,14 @@ defmodule Azure.AuthAgent do
     }
   end
 
+  defmodule AgentState do
+    @type t :: %AgentState{sp: ServicePrinciple.t(), auth_map: %{String.t() => any}}
+    defstruct([
+      :sp,
+      :auth_map
+    ])
+  end
+
   @impl true
   def init(:ok) do
     # {:ok, %{sp: %ServicePrinciple{}, auth_map: %AuthToken{}}}
@@ -173,14 +181,17 @@ defmodule Azure.AuthAgent do
     GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
   end
 
+  @spec get_auth_token(scope :: String) :: AuthToken.t()
   def get_new_auth_token(scope) do
     GenServer.call(__MODULE__, {:get_new_access_token, scope})
   end
 
-  def get_auth_token(scope) do
+  @spec get_auth_token(scope :: String) :: AuthToken.t()
+  def(get_auth_token(scope)) do
     GenServer.call(__MODULE__, {:get_access_token, scope})
   end
 
+  # @spec check_state() :: %{}
   def check_state() do
     GenServer.call(__MODULE__, {:check_state})
   end

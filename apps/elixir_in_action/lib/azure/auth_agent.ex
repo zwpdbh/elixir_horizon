@@ -62,6 +62,7 @@ defmodule Azure.AuthAgent do
               client_id: "",
               client_secret: ""
 
+    @spec new() :: %ServicePrinciple{}
     def new() do
       %ServicePrinciple{
         tenant_id: "72f988bf-86f1-41af-91ab-2d7cd011db47",
@@ -70,6 +71,7 @@ defmodule Azure.AuthAgent do
       }
     end
 
+    @spec read_secret() :: String.t()
     defp read_secret() do
       {:ok, secret} =
         (File.cwd!() <> "/" <> "client_secret.txt")
@@ -79,6 +81,8 @@ defmodule Azure.AuthAgent do
     end
   end
 
+  @spec get_access_token(ServicePrinciple.t(), String.t()) ::
+          {:ok, %AuthToken{}} | {:err, any}
   defp get_access_token(%ServicePrinciple{} = sp, scope) do
     uri = "https://login.microsoftonline.com/#{sp.tenant_id}/oauth2/v2.0/token"
 
@@ -92,10 +96,10 @@ defmodule Azure.AuthAgent do
 
     case RestClient.post_request(uri, query_parameters, headers) do
       {:ok, %HTTPoison.Response{body: body_str, status_code: 200}} ->
-        {:ok, decode_access_token_from_body(body_str), %{}}
+        {:ok, decode_access_token_from_body(body_str)}
 
       {_, error} ->
-        {:error, %AuthToken{}, error}
+        {:err, error}
     end
   end
 
@@ -128,7 +132,7 @@ defmodule Azure.AuthAgent do
 
   @impl true
   def handle_call({:get_new_access_token, scope}, _from, %{:sp => sp} = state) do
-    {:ok, auth_token, _info} = get_access_token(sp, scope)
+    {:ok, auth_token} = get_access_token(sp, scope)
 
     {:reply, auth_token,
      put_in(state, Enum.map([:auth_map, scope], &Access.key(&1, %{})), auth_token)}
@@ -143,12 +147,12 @@ defmodule Azure.AuthAgent do
     {:ok, auth_token} =
       case auth_map[scope] do
         nil ->
-          {:ok, auth_token, _info} = get_access_token(sp, scope)
+          {:ok, auth_token} = get_access_token(sp, scope)
           {:ok, auth_token}
 
         %AuthToken{access_token: _access_token, expires_at: expires_at} ->
           if remaining_seconds(expires_at) < 0 do
-            {:ok, auth_token, _info} = get_access_token(sp, scope)
+            {:ok, auth_token} = get_access_token(sp, scope)
             {:ok, auth_token}
           else
             {:ok, auth_map[scope]}
@@ -186,7 +190,6 @@ defmodule Azure.AuthAgent do
     GenServer.call(__MODULE__, {:get_new_access_token, scope})
   end
 
-  @spec get_auth_token(scope :: String) :: AuthToken.t()
   def(get_auth_token(scope)) do
     GenServer.call(__MODULE__, {:get_access_token, scope})
   end

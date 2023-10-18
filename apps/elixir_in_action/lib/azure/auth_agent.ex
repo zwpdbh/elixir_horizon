@@ -5,20 +5,17 @@ defmodule Azure.AuthAgent do
   # It is the resource identifier of the resource you want. It is affixed with the .default suffix.
   # Here, the resource identifier is checked by
   # Azure AD --> App Registration -> ScenarioFramework -> Overview. Then check "Application ID URI".
-  @azure_scope "https://management.azure.com/.default"
-  @azure_storage "https://storage.azure.com/.default"
-  @xscnworkflowconsole_scope "https://microsoft.onmicrosoft.com/3b4ae08b-9919-4749-bb5b-7ed4ef15964d/.default"
 
   def azure_scope() do
-    @azure_scope
+    "https://management.azure.com/.default"
   end
 
   def xscnworkflow_scope() do
-    @xscnworkflowconsole_scope
+    "https://microsoft.onmicrosoft.com/3b4ae08b-9919-4749-bb5b-7ed4ef15964d/.default"
   end
 
   def azure_storage() do
-    @azure_storage
+    "https://storage.azure.com/.default"
   end
 
   def scenario_deployment_api() do

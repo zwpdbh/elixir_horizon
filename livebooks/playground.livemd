@@ -198,20 +198,26 @@ Aks.update_latest_workflows(200)
 
 ```elixir
 Aks.list_aks_failed_workflows()
-|> Aks.filter_workflows_after_date("2023-10-10")
+|> Aks.filter_workflows_after_date("2023-10-17")
 |> Aks.summary_workflows()
 ```
 
 ```elixir
-"6b39a6da-cb19-4033-b806-643868d02bc8" |> Aks.overwrite_default_k8s_config()
+workflow_id = "5f09e7ad-2416-4381-9c70-7690b54d2d1d"
 ```
 
 ```elixir
-"6b39a6da-cb19-4033-b806-643868d02bc8" |> Aks.get_workflow_from_id()
+workflow_id |> Aks.overwrite_default_k8s_config()
+workflow_id |> Aks.get_workflow_from_id()
 ```
 
 ```elixir
 ExecCmd.run("kubectl get pods")
+
+"""
+kubectl exec  xscn-workflow-pod -- sh -c "df -h /mnt/azuredisk"
+"""
+|> ExecCmd.run()
 ```
 
 ```elixir
@@ -224,7 +230,7 @@ ExecCmd.run("kubectl get node -o wide")
 ```
 
 ```elixir
-ExecCmd.run("kubectl describe pvc pvc-azuredisk")
+ExecCmd.run("kubectl describe pvc xscn-workflow-pvc")
 ```
 
 when you run `kubectl get po -n kube-system`, you're asking Kubernetes to retrieve and display information about all the pods in the kube-system namespace.
@@ -241,12 +247,12 @@ ExecCmd.run("kubectl get po -n kube-system -o wide | grep csi | grep win")
 
 ```elixir
 # export the kubeconfig file 
-ExecCmd.run("cp ~/.kube/config /mnt/d/Downloads/eedc2d4d-b0ef-45b4-979b-190c5bbf988b.config")
+ExecCmd.run("cp ~/.kube/config /mnt/d/Downloads/b275941c-3dbb-49eb-bd8f-0fcdf6cb986b.config")
 ```
 
 ```elixir
 Aks.list_aks_failed_workflows()
-|> Aks.filter_workflows_after_date("2023-10-09")
+|> Aks.filter_workflows_after_date("2023-10-16")
 |> Aks.summary_workflows()
 |> Enum.each(fn each -> Aks.cleanup_aks_workflow(each) end)
 ```

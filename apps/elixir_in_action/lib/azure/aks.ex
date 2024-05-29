@@ -304,7 +304,7 @@ defmodule Azure.Aks do
 
   def cleanup_aks_workflow(%{id: workflow_id}) do
     try do
-      Logger.warn("cleanup aks workflow: #{workflow_id}")
+      Logger.warning("cleanup aks workflow: #{workflow_id}")
 
       workflow_id
       |> terminate_workflow()

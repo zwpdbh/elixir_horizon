@@ -53,7 +53,7 @@ defmodule How.Saga.SimpleDemo do
           Logger.info("===OK, do summary for complete successful report")
 
         :error ->
-          Logger.warn("===Error, do summary for what error happended")
+          Logger.warning("===Error, do summary for what error happended")
           Logger.info(attrs)
       end
     end)

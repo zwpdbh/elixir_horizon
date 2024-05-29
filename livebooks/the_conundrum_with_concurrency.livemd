@@ -1,7 +1,0 @@
-# The conundrum with concurrency: (Tasks to the rescue)
-
-## Section
-
-```elixir
-
-```

@@ -29,19 +29,32 @@ defmodule Azure.Aks do
 
   @impl true
   def handle_call({:update_latest_workflows, count}, _from, %{} = state) do
-    workflows = list_workflows_aux(count)
-    {:reply, length(workflows), Map.put(state, :workflows, workflows)}
+    with {:ok, workflows} <- list_workflows_aux(count) do
+      {:reply, workflows, Map.put(state, :workflows, workflows)}
+    else
+      {:err, err} ->
+        {:reply, err, state}
+    end
   end
 
-  @impl true
-  def handle_call({:list_workflows}, _from, %{workflows: []} = state) do
-    workflows = list_workflows_aux(10)
-    {:reply, length(workflows), Map.put(state, :workflows, workflows)}
-  end
+  # @impl true
+  # def handle_call({:list_workflows, count}, _from, %{workflows: []} = state) do
+  #   {:ok, workflows} = list_workflows_aux(count)
+  #   {:reply, workflows, Map.put(state, :workflows, workflows)}
+  # end
 
   @impl true
-  def handle_call({:list_workflows}, _from, %{workflows: workflows} = state) do
-    {:reply, workflows, state}
+  def handle_call({:list_workflows, count}, _from, %{workflows: workflows} = state) do
+    if length(workflows) == count do
+      {:reply, workflows, state}
+    else
+      with {:ok, workflows} <- list_workflows_aux(count) do
+        {:reply, workflows, Map.put(state, :workflows, workflows)}
+      else
+        {:err, err} ->
+          {:reply, err, state}
+      end
+    end
   end
 
   # It fetch {count} records and filter out only k8s related
@@ -54,10 +67,16 @@ defmodule Azure.Aks do
       |> RestClient.add_header("accept", "text/plain")
       |> RestClient.add_header("Authorization", "Bearer #{auth_token.access_token}")
 
-    {:ok, %HTTPoison.Response{body: body_str}} =
-      RestClient.get_request(@uri <> "/api/Workflow", query_options, headers)
+    response = RestClient.get_request(@uri <> "/api/Workflow", query_options, headers)
 
-    Jason.decode!(body_str)
+    case response do
+      {:ok, %HTTPoison.Response{body: body_str}} ->
+        {:ok, Jason.decode!(body_str)}
+
+      err ->
+        err |> IO.inspect(label: "#{__MODULE__} 64")
+        {:err, err}
+    end
   end
 
   # Client API
@@ -69,11 +88,11 @@ defmodule Azure.Aks do
   # Then, it update the state.
   # To check k8s related workflows use other commands
   def update_latest_workflows(count) do
-    GenServer.call(__MODULE__, {:update_latest_workflows, count}, 10_000)
+    GenServer.call(__MODULE__, {:update_latest_workflows, count}, 60_000)
   end
 
-  def list_workflows() do
-    GenServer.call(__MODULE__, {:list_workflows}, 10_000)
+  def list_workflows(count \\ 100) do
+    GenServer.call(__MODULE__, {:list_workflows, count}, 60_000)
   end
 
   def list_aks_workflows() do
@@ -139,10 +158,10 @@ defmodule Azure.Aks do
   end
 
   defp get_aks_config_from_workflow_id(id) do
-    list_aks_workflows()
-    |> Enum.filter(fn %{id: workflow_id} -> workflow_id == id end)
-    |> List.first()
-    |> Map.fetch!(:k8s_config)
+    workflow_detail = get_workflow_from_id(id)
+
+    Logger.info("get k8s config for cluster: #{workflow_detail.cluster}")
+    workflow_detail |> Map.fetch!(:k8s_config)
   end
 
   def list_aks_workflows_after() do
@@ -207,6 +226,35 @@ defmodule Azure.Aks do
     workflow_id
   end
 
+  defp get_workflow_data_from_id(workflow_id) do
+    auth_token = get_auth_token()
+    url = @uri <> "/api/Workflow/#{workflow_id}"
+
+    headers =
+      RestClient.add_header("Content-type", "application/json")
+      |> RestClient.add_header("accept", "text/plain")
+      |> RestClient.add_header("Authorization", "Bearer #{auth_token.access_token}")
+
+    response = RestClient.get_request(url, nil, headers)
+
+    case response do
+      {:ok, %HTTPoison.Response{body: body_str}} ->
+        {:ok, Jason.decode!(body_str)}
+
+      err ->
+        err |> IO.inspect(label: "#{__MODULE__} 64")
+        {:err, err}
+    end
+  end
+
+  def get_workflow_from_id(workflow_id) do
+    {:ok, workflow} = get_workflow_data_from_id(workflow_id)
+
+    [workflow]
+    |> process_aks_workflows_data
+    |> List.first()
+  end
+
   def cleanup_all_failed_workflows() do
     # From: https://hexdocs.pm/elixir/Task.html#async_stream/3-example
     # I use this: https://hexdocs.pm/elixir/Task.Supervisor.html#async_stream/4
@@ -215,7 +263,7 @@ defmodule Azure.Aks do
       TaskSupervisor,
       list_aks_failed_workflows(),
       &cleanup_aks_workflow/1,
-      max_concurrency: 2,
+      max_concurrency: 1,
       timeout: 5_000,
       on_timeout: :kill_task,
       zip_input_on_exit: true
@@ -256,11 +304,13 @@ defmodule Azure.Aks do
 
   def cleanup_aks_workflow(%{id: workflow_id}) do
     try do
-      Logger.info("cleanup aks workflow: #{workflow_id}")
+      Logger.warning("cleanup aks workflow: #{workflow_id}")
 
       workflow_id
       |> terminate_workflow()
-      |> cleanup_aks_storage()
+      |> clean_up_pod_from_workflow_id()
+      |> clean_up_pvc_from_workflow_id()
+      |> clean_up_pv_from_workflow_id()
 
       {:ok, workflow_id}
     rescue
@@ -269,29 +319,32 @@ defmodule Azure.Aks do
     end
   end
 
-  def cleanup_aks_storage(workflow_id) do
-    clean_up_pods(workflow_id)
-    |> clean_up_pvc()
-    |> clean_up_pv()
+  def clean_up_pod_from_workflow_id(workflow_id) do
+    workflow_id
+    |> run_kubectl_cmd_for_id("kubectl delete --all pods")
+
+    workflow_id
   end
 
-  def clean_up_pods(workflow_id) do
-    run_kubectl_cmd_for_id(workflow_id, "kubectl delete --all pods")
+  def clean_up_pvc_from_workflow_id(workflow_id) do
+    workflow_id
+    |> run_kubectl_cmd_for_id("kubectl delete --all pvc")
+
+    workflow_id
   end
 
-  def clean_up_pvc(workflow_id) do
-    run_kubectl_cmd_for_id(workflow_id, "kubectl delete --all pvc")
-  end
+  def clean_up_pv_from_workflow_id(workflow_id) do
+    workflow_id
+    |> run_kubectl_cmd_for_id("kubectl delete --all pv")
 
-  def clean_up_pv(workflow_id) do
-    run_kubectl_cmd_for_id(workflow_id, "kubectl delete --all pv")
+    workflow_id
   end
 
   def run_kubectl_cmd_for_id(id, command_str) do
     get_aks_config_from_workflow_id(id)
     |> run_kubectl_cmd(command_str)
 
-    id
+    # id
   end
 
   # Suppose we need to operate multiple AKS clusters using kubectl, then we need to specify different kubeconfig for each cluster.
@@ -344,5 +397,59 @@ defmodule Azure.Aks do
     |> List.first()
     |> Map.get("value")
     |> Base.decode64!()
+  end
+
+  def enable_aks_node_pool_os_auto_upgrade(aks_clusters) do
+    aks_clusters
+    |> Enum.map(fn aks_name ->
+      {:ok, output} =
+        ExecCmd.run("""
+        az aks update \
+          --resource-group #{aks_name} \
+          --name #{aks_name} \
+          --node-os-upgrade-channel NodeImage
+        """)
+
+      profile = output |> Jason.decode!()
+      %{"aks" => aks_name, "autoUpgradeProfile" => Map.get(profile, "autoUpgradeProfile")}
+    end)
+  end
+
+  def list_node_pools_for_aks_cluster(aks_cluster) do
+    {:ok, node_pools} =
+      ExecCmd.run(
+        "az aks nodepool list --cluster-name #{aks_cluster} --resource-group #{aks_cluster}"
+      )
+
+    node_pools
+    |> Jason.decode!()
+    |> Enum.map(fn each ->
+      %{
+        id: Map.get(each, "id"),
+        name: Map.get(each, "name"),
+        nodeImageVersion: Map.get(each, "nodeImageVersion"),
+        aks: aks_cluster
+      }
+    end)
+  end
+
+  def list_node_pools_for_aks_clusters(aks_clusters) do
+    Task.async_stream(
+      aks_clusters,
+      fn aks -> list_node_pools_for_aks_cluster(aks) end,
+      max_concurrency: 3,
+      timeout: 30_000,
+      on_timeout: :kill_task,
+      zip_input_on_exit: true
+    )
+    |> Enum.reduce(%{}, fn result, acc ->
+      case result do
+        {:ok, pools} ->
+          Map.update(acc, :ok, pools, fn existing_pools -> pools ++ existing_pools end)
+
+        {_err, reason} ->
+          Map.update(acc, :err, [reason], fn existing_ones -> [reason | existing_ones] end)
+      end
+    end)
   end
 end

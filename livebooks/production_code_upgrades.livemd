@@ -161,7 +161,7 @@ end
 :sys.resume(pid)
 ```
 
-#### About Backward Compatibility
+### About Backward Compatibility
 
 * When we update GenServer, we need to keep a clause to make it accept old messages so as to provide backward compatibility of the previous version to do a clean upgrade.
 * For instance, if we changed the `handle_info` callback clause without left a previous clause, our GenServer will crash and report "no function clause matching".

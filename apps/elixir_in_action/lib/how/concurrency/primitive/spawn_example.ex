@@ -154,7 +154,7 @@ defmodule How.Concurrency.Primitive.Parallel do
     |> Enum.map(fn elem ->
       spawn_link(fn -> send(me, {self(), fun.(elem)}) end)
     end)
-    |> Enum.map(fn pid ->
+    |> Enum.map(fn _pid ->
       receive do
         # Without use of ^pid, we'd get back the results in random order.
         {_pid, result} ->

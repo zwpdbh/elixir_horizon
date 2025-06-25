@@ -5,20 +5,17 @@ defmodule Azure.AuthAgent do
   # It is the resource identifier of the resource you want. It is affixed with the .default suffix.
   # Here, the resource identifier is checked by
   # Azure AD --> App Registration -> ScenarioFramework -> Overview. Then check "Application ID URI".
-  @azure_scope "https://management.azure.com/.default"
-  @azure_storage "https://storage.azure.com/.default"
-  @xscnworkflowconsole_scope "https://microsoft.onmicrosoft.com/3b4ae08b-9919-4749-bb5b-7ed4ef15964d/.default"
 
   def azure_scope() do
-    @azure_scope
+    "https://management.azure.com/.default"
   end
 
   def xscnworkflow_scope() do
-    @xscnworkflowconsole_scope
+    "https://microsoft.onmicrosoft.com/3b4ae08b-9919-4749-bb5b-7ed4ef15964d/.default"
   end
 
   def azure_storage() do
-    @azure_storage
+    "https://storage.azure.com/.default"
   end
 
   def scenario_deployment_api() do
@@ -62,6 +59,7 @@ defmodule Azure.AuthAgent do
               client_id: "",
               client_secret: ""
 
+    @spec new() :: %ServicePrinciple{}
     def new() do
       %ServicePrinciple{
         tenant_id: "72f988bf-86f1-41af-91ab-2d7cd011db47",
@@ -70,6 +68,7 @@ defmodule Azure.AuthAgent do
       }
     end
 
+    @spec read_secret() :: String.t()
     defp read_secret() do
       {:ok, secret} =
         (File.cwd!() <> "/" <> "client_secret.txt")
@@ -79,6 +78,8 @@ defmodule Azure.AuthAgent do
     end
   end
 
+  @spec get_access_token(ServicePrinciple.t(), String.t()) ::
+          {:ok, %AuthToken{}} | {:err, any}
   defp get_access_token(%ServicePrinciple{} = sp, scope) do
     uri = "https://login.microsoftonline.com/#{sp.tenant_id}/oauth2/v2.0/token"
 
@@ -92,10 +93,10 @@ defmodule Azure.AuthAgent do
 
     case RestClient.post_request(uri, query_parameters, headers) do
       {:ok, %HTTPoison.Response{body: body_str, status_code: 200}} ->
-        {:ok, decode_access_token_from_body(body_str), %{}}
+        {:ok, decode_access_token_from_body(body_str)}
 
       {_, error} ->
-        {:error, %AuthToken{}, error}
+        {:err, error}
     end
   end
 
@@ -112,6 +113,14 @@ defmodule Azure.AuthAgent do
     }
   end
 
+  defmodule AgentState do
+    @type t :: %AgentState{sp: ServicePrinciple.t(), auth_map: %{String.t() => any}}
+    defstruct([
+      :sp,
+      :auth_map
+    ])
+  end
+
   @impl true
   def init(:ok) do
     # {:ok, %{sp: %ServicePrinciple{}, auth_map: %AuthToken{}}}
@@ -120,7 +129,7 @@ defmodule Azure.AuthAgent do
 
   @impl true
   def handle_call({:get_new_access_token, scope}, _from, %{:sp => sp} = state) do
-    {:ok, auth_token, _info} = get_access_token(sp, scope)
+    {:ok, auth_token} = get_access_token(sp, scope)
 
     {:reply, auth_token,
      put_in(state, Enum.map([:auth_map, scope], &Access.key(&1, %{})), auth_token)}
@@ -135,12 +144,12 @@ defmodule Azure.AuthAgent do
     {:ok, auth_token} =
       case auth_map[scope] do
         nil ->
-          {:ok, auth_token, _info} = get_access_token(sp, scope)
+          {:ok, auth_token} = get_access_token(sp, scope)
           {:ok, auth_token}
 
         %AuthToken{access_token: _access_token, expires_at: expires_at} ->
           if remaining_seconds(expires_at) < 0 do
-            {:ok, auth_token, _info} = get_access_token(sp, scope)
+            {:ok, auth_token} = get_access_token(sp, scope)
             {:ok, auth_token}
           else
             {:ok, auth_map[scope]}
@@ -173,14 +182,16 @@ defmodule Azure.AuthAgent do
     GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
   end
 
+  @spec get_auth_token(scope :: String) :: AuthToken.t()
   def get_new_auth_token(scope) do
     GenServer.call(__MODULE__, {:get_new_access_token, scope})
   end
 
-  def get_auth_token(scope) do
+  def(get_auth_token(scope)) do
     GenServer.call(__MODULE__, {:get_access_token, scope})
   end
 
+  # @spec check_state() :: %{}
   def check_state() do
     GenServer.call(__MODULE__, {:check_state})
   end

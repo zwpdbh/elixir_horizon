@@ -94,28 +94,28 @@ defmodule How.Snippets.SumType do
     end
   end
 
-  def demo_01() do
-    # This will show warning and report error because the first parameter should be a Issue struct
-    Issue.add_assignee_v2(%{name: "issue01", description: "issue01"}, "zw")
-  end
+  # def demo_01() do
+  #   # This will show warning and report error because the first parameter should be a Issue struct
+  #   Issue.add_assignee_v2(%{name: "issue01", description: "issue01"}, "zw")
+  # end
 
-  def demo_02() do
-    # This will show no warning and will produce correct result which is:
-    # %How.Snippets.SumType.Issue{
-    #   name: "issue01",
-    #   description: "issue01",
-    #   state: {:not_started, "zw"}
-    # }
-    Issue.add_assignee_v2(%Issue{name: "issue01", description: "issue01"}, "zw")
-  end
+  # def demo_02() do
+  #   # This will show no warning and will produce correct result which is:
+  #   # %How.Snippets.SumType.Issue{
+  #   #   name: "issue01",
+  #   #   description: "issue01",
+  #   #   state: {:not_started, "zw"}
+  #   # }
+  #   Issue.add_assignee_v2(%Issue{name: "issue01", description: "issue01"}, "zw")
+  # end
 
-  def demo_03() do
-    # This will show warning because the compiler could inference that the result of
-    # add_assignee_v2 doesn't match the type specification from update_to_review:
-    # Because {:not_started, assignee_name} will never match {:in_progress, assignee_name}
-    Issue.add_assignee_v2(%Issue{name: "issue01", description: "issue01"}, "zw")
-    |> Issue.update_to_review("myself")
-  end
+  # def demo_03() do
+  #   # This will show warning because the compiler could inference that the result of
+  #   # add_assignee_v2 doesn't match the type specification from update_to_review:
+  #   # Because {:not_started, assignee_name} will never match {:in_progress, assignee_name}
+  #   Issue.add_assignee_v2(%Issue{name: "issue01", description: "issue01"}, "zw")
+  #   |> Issue.update_to_review("myself")
+  # end
 
   def demo_04() do
     # This will show no warning and complete with result:
